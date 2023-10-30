@@ -5,7 +5,6 @@
 Binaryleri ve objeleri derlemek için:
 
 ```sh
-git submodule update --init
 make
 cd src
 make
