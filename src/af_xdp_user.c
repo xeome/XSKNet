@@ -26,28 +26,27 @@
 #include <linux/ipv6.h>
 #include <net/if.h>
 
-#include "../common/common_libbpf.h"
-#include "../common/common_params.h"
-#include "../common/common_user_bpf_xdp.h"
+#include "../common/xdp_load.h"
 
 #define NUM_FRAMES 4096
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
 #define RX_BATCH_SIZE 64
 #define INVALID_UMEM_FRAME UINT64_MAX
 
+// Pointer to the XDP program used by the AF_XDP socket.
 static struct xdp_program* prog;
-int xsk_map_fd;
-bool custom_xsk = false;
-struct config cfg = {
-    .ifindex = -1,
-};
 
+/**
+ * Structure that holds information about a user space memory region (umem).
+ * It contains a producer ring (fq), a consumer ring (cq), a pointer to the umem itself, and a pointer to the buffer.
+ */
 struct xsk_umem_info {
     struct xsk_ring_prod fq;
     struct xsk_ring_cons cq;
     struct xsk_umem* umem;
     void* buffer;
 };
+
 struct stats_record {
     uint64_t timestamp;
     uint64_t rx_packets;
@@ -55,6 +54,7 @@ struct stats_record {
     uint64_t tx_packets;
     uint64_t tx_bytes;
 };
+
 struct xsk_socket_info {
     struct xsk_ring_cons rx;
     struct xsk_ring_prod tx;
@@ -176,8 +176,9 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
             goto error_exit;
     } else {
         /* Getting the program ID must be after the xdp_socket__create() call */
-        if (bpf_xdp_query_id(cfg->ifindex, cfg->xdp_flags, &prog_id))
+        if (bpf_xdp_query_id(cfg->ifindex, cfg->xdp_flags, &prog_id)) {
             goto error_exit;
+        }
     }
 
     /* Initialize umem frame allocation */
@@ -405,9 +406,11 @@ static void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socke
     while (!global_exit) {
         if (cfg->xsk_poll_mode) {
             ret = poll(fds, nfds, -1);  // Wait indefinitely for packets to arrive
-            if (ret <= 0 || ret > 1)    // Error or no packets received
+            if (ret <= 0 || ret > 1) {  // Error or no packets received
                 continue;               // Try again
+            }
         }
+        sleep(10);
         handle_receive_packets(xsk_socket);
     }
 }
@@ -492,11 +495,11 @@ static void* stats_poll(void* arg) {
 static void exit_application(int signal) {
     int err;
 
-    cfg.unload_all = true;
-    err = do_unload(&cfg);
-    if (err) {
-        fprintf(stderr, "Couldn't detach XDP program on iface '%s' : (%d)\n", cfg.ifname, err);
-    }
+    // cfg.unload_all = true;
+    // err = do_unload(&cfg);
+    // if (err) {
+    //     fprintf(stderr, "Couldn't detach XDP program on iface '%s' : (%d)\n", cfg.ifname, err);
+    // }
 
     signal = signal;
     global_exit = true;
@@ -513,7 +516,6 @@ int main(int argc, char** argv) {
     struct xsk_socket_info* xsk_socket;
     pthread_t stats_poll_thread;
     int err;
-    char errmsg[1024];
 
     /* Global shutdown handler */
     signal(SIGINT, exit_application);
@@ -528,46 +530,13 @@ int main(int argc, char** argv) {
         return EXIT_FAIL_OPTION;
     }
 
-    /* Load custom program if configured */
-    if (cfg.filename[0] != 0) {
-        struct bpf_map* map;
+    /* Load the XDP program */
+    // err = load_xdp_program(&cfg, prog);
 
-        custom_xsk = true;
-        xdp_opts.open_filename = cfg.filename;
-        xdp_opts.prog_name = cfg.progname;
-        xdp_opts.opts = &opts;
-
-        if (cfg.progname[0] != 0) {
-            xdp_opts.open_filename = cfg.filename;
-            xdp_opts.prog_name = cfg.progname;
-            xdp_opts.opts = &opts;
-
-            prog = xdp_program__create(&xdp_opts);
-        } else {
-            prog = xdp_program__open_file(cfg.filename, NULL, &opts);
-        }
-        err = libxdp_get_error(prog);
-        if (err) {
-            libxdp_strerror(err, errmsg, sizeof(errmsg));
-            fprintf(stderr, "ERR: loading program: %s\n", errmsg);
-            return err;
-        }
-
-        err = xdp_program__attach(prog, cfg.ifindex, cfg.attach_mode, 0);
-        if (err) {
-            libxdp_strerror(err, errmsg, sizeof(errmsg));
-            fprintf(stderr, "Couldn't attach XDP program on iface '%s' : %s (%d)\n", cfg.ifname, errmsg, err);
-            return err;
-        }
-
-        /* We also need to load the xsks_map */
-        map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog), "xsks_map");
-        xsk_map_fd = bpf_map__fd(map);
-        if (xsk_map_fd < 0) {
-            fprintf(stderr, "ERROR: no xsks map found: %s\n", strerror(xsk_map_fd));
-            exit(EXIT_FAILURE);
-        }
-    }
+    // if (err) {
+    //     fprintf(stderr, "ERROR: loading program: %s\n", strerror(err));
+    //     exit(EXIT_FAILURE);
+    // }
 
     /* Allow unlimited locking of memory, so all memory needed for packet
      * buffers can be locked.

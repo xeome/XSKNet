@@ -371,7 +371,7 @@ run_ping()
         fi
     fi
 
-    ns_exec "$PING" "$IP" "$@" -s 1500
+    ns_exec "$PING" "$IP" "$@" # -l 5000 -c 5000 -i 0.001 
 }
 
 run_tcpdump()
