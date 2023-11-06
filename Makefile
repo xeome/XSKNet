@@ -1,52 +1,27 @@
-# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
+CXX := clang
+CXXFLAGS := -O2 -g -Wall -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -Werror
+CCOBJFLAGS := $(CXXFLAGS) -c
+CXXBPFFLAGS := -O2 -g -Wall -target bpf -D __BPF_TRACING__ -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -Werror 
+CCOBJBPFFLAGS := $(CXXBPFFLAGS) -c
 
-ifeq ("$(origin V)", "command line")
-VERBOSE = $(V)
-endif
-ifndef VERBOSE
-VERBOSE = 0
-endif
+OBJ_PATH := obj
+SRC_PATH := src
+BIN_PATH := bin
+INC_PATH := include
 
-ifeq ($(VERBOSE),0)
-MAKEFLAGS += --no-print-directory
-Q = @
-endif
+SRC_FILES := $(wildcard $(SRC_PATH)/*.c)
+KERN_SRC := $(SRC_PATH)/xdp_kern.c
 
-LESSONS = $(wildcard basic*) $(wildcard packet*) $(wildcard tracing??-*)
-# LESSONS += advanced03-AF_XDP
-LESSONS_CLEAN = $(addsuffix _clean,$(LESSONS))
+all: $(BIN_PATH)/xdp_daemon $(OBJ_PATH)/xdp_kern_obj.o
 
-.PHONY: clean clobber distclean $(LESSONS) $(LESSONS_CLEAN)
+$(OBJ_PATH)/xdp_kern_obj.o: $(KERN_SRC)
+	$(CXX) $(CCOBJBPFFLAGS) -I$(INC_PATH) -o $@ $(KERN_SRC)
 
-all: lib $(LESSONS)
-clean: $(LESSONS_CLEAN)
-	@echo; echo common; $(MAKE) -C common clean
-	@echo; echo lib; $(MAKE) -C lib clean
+$(BIN_PATH)/xdp_daemon: $(SRC_FILES)
+	$(CXX) $(CXXFLAGS) -I$(INC_PATH) -o $@ $^ -lxdp -lbpf
 
-lib: config.mk check_submodule
-	@echo; echo $@; $(MAKE) -C $@
 
-$(LESSONS):
-	@echo; echo $@; $(MAKE) -C $@
+clean:
+	rm -rf $(OBJ_PATH)/*.o $(BIN_PATH)/*
 
-$(LESSONS_CLEAN):
-	@echo; echo $@; $(MAKE) -C $(subst _clean,,$@) clean
-
-config.mk: configure
-	@sh configure
-
-clobber:
-	@touch config.mk
-	$(Q)$(MAKE) clean
-	$(Q)rm -f config.mk
-
-distclean:	clobber
-
-check_submodule:
-	@if [ -d .git ] && `git submodule status lib/libbpf | grep -q '^+'`; then \
-		echo "" ;\
-		echo "** WARNING **: git submodule SHA-1 out-of-sync" ;\
-		echo " consider running: git submodule update"  ;\
-		echo "" ;\
-	fi\
-
+.PHONY: all clean

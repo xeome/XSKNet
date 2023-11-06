@@ -1,73 +1,118 @@
-#include <signal.h>
+#include <stdlib.h>
+#include <errno.h>
 
-#include "../common/xdp_load.h"
+#include <bpf/bpf.h>
+#include <xdp/libxdp.h>
+#include <xdp/xsk.h>
 
-static const char* __doc__ = "Program for loading kernel section of the xdp program\n";
+#include "defs.h"
+#include "xdp_load.h"
 
-static struct xdp_program* prog;
-
-static bool global_exit;
-
-static const struct option_wrapper long_options[] = {
-
-    {{"help", no_argument, NULL, 'h'}, "Show help", false},
-
-    {{"dev", required_argument, NULL, 'd'}, "Operate on device <ifname>", "<ifname>", true},
-
-    {{"skb-mode", no_argument, NULL, 'S'}, "Install XDP program in SKB (AKA generic) mode"},
-
-    {{"native-mode", no_argument, NULL, 'N'}, "Install XDP program in native mode"},
-
-    {{"auto-mode", no_argument, NULL, 'A'}, "Auto-detect SKB or native mode"},
-
-    {{"force", no_argument, NULL, 'F'}, "Force install, replacing existing program on interface"},
-
-    {{"copy", no_argument, NULL, 'c'}, "Force copy mode"},
-
-    {{"zero-copy", no_argument, NULL, 'z'}, "Force zero-copy mode"},
-
-    {{"queue", required_argument, NULL, 'Q'}, "Configure interface receive queue for AF_XDP, default=0"},
-
-    {{"poll-mode", no_argument, NULL, 'p'}, "Use the poll() API waiting for packets to arrive"},
-
-    {{"quiet", no_argument, NULL, 'q'}, "Quiet mode (no output)"},
-
-    {{"filename", required_argument, NULL, 1}, "Load program from <file>", "<file>"},
-
-    {{"progname", required_argument, NULL, 2}, "Load program from function <name> in the ELF file", "<name>"},
-
-    {{0, 0, NULL, 0}, NULL, false}};
-
-static void exit_application(int signal) {
+int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_fd) {
     int err;
+    char errmsg[1024];
+    DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
+    DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
 
-    cfg.unload_all = true;
-    err = do_unload(&cfg);
-    if (err) {
-        fprintf(stderr, "Couldn't detach XDP program on iface '%s' : (%d)\n", cfg.ifname, err);
+    if (cfg->filename[0] != 0) {
+        struct bpf_map* map;
+
+        xdp_opts.open_filename = cfg->filename;
+        xdp_opts.prog_name = cfg->progname;
+        xdp_opts.opts = &opts;
+
+        if (cfg->progname[0] != 0) {
+            prog = xdp_program__create(&xdp_opts);
+        } else {
+            prog = xdp_program__open_file(cfg->filename, NULL, &opts);
+        }
+
+        err = libxdp_get_error(prog);
+        if (err) {
+            libxdp_strerror(err, errmsg, sizeof(errmsg));
+            fprintf(stderr, "ERR: loading program: %s\n", errmsg);
+            return err;
+        }
+
+        err = xdp_program__attach(prog, cfg->ifindex, cfg->attach_mode, 0);
+        if (err) {
+            libxdp_strerror(err, errmsg, sizeof(errmsg));
+            fprintf(stderr, "Couldn't attach XDP program on iface '%s' : %s (%d)\n", cfg->ifname, errmsg, err);
+            return err;
+        }
+
+        /* We also need to load the xsks_map */
+        map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog), "xsks_map");
+        *xsk_map_fd = bpf_map__fd(map);
+        if (*xsk_map_fd < 0) {
+            fprintf(stderr, "ERROR: no xsks map found: %s\n", strerror(*xsk_map_fd));
+            exit(EXIT_FAIL);
+        }
     }
 
-    signal = signal;
-    global_exit = true;
+    return 0;
 }
 
-int main(int argc, char** argv) {
-    int err;
+int do_unload(struct config* cfg) {
+    struct xdp_multiprog* mp = NULL;
+    enum xdp_attach_mode mode;
+    int err = EXIT_FAILURE;
+    DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
 
-    signal(SIGINT, exit_application);
-
-    parse_cmdline_args(argc, argv, long_options, &cfg, __doc__);
-
-    err = load_xdp_program(&cfg, prog);
-
-    if (err) {
-        fprintf(stderr, "ERROR: loading program: %s\n", strerror(err));
-        exit(EXIT_FAILURE);
+    mp = xdp_multiprog__get_from_ifindex(cfg->ifindex);
+    if (libxdp_get_error(mp)) {
+        fprintf(stderr, "Unable to get xdp_dispatcher program: %s\n", strerror(errno));
+        goto out;
+    } else if (!mp) {
+        fprintf(stderr, "No XDP program loaded on %s\n", cfg->ifname);
+        mp = NULL;
+        goto out;
     }
 
-    while (!global_exit) {
-        sleep(1);
+    if (cfg->unload_all) {
+        err = xdp_multiprog__detach(mp);
+        if (err) {
+            fprintf(stderr, "Unable to detach XDP program: %s\n", strerror(-err));
+            goto out;
+        }
+    } else {
+        struct xdp_program* prog = NULL;
+
+        while ((prog = xdp_multiprog__next_prog(prog, mp))) {
+            if (xdp_program__id(prog) == cfg->prog_id) {
+                mode = xdp_multiprog__attach_mode(mp);
+                goto found;
+            }
+        }
+
+        if (xdp_multiprog__is_legacy(mp)) {
+            prog = xdp_multiprog__main_prog(mp);
+            if (xdp_program__id(prog) == cfg->prog_id) {
+                mode = xdp_multiprog__attach_mode(mp);
+                goto found;
+            }
+        }
+
+        prog = xdp_multiprog__hw_prog(mp);
+        if (xdp_program__id(prog) == cfg->prog_id) {
+            mode = XDP_MODE_HW;
+            goto found;
+        }
+
+        printf("Program with ID %u not loaded on %s\n", cfg->prog_id, cfg->ifname);
+        err = -ENOENT;
+        goto out;
+
+    found:
+        printf("Detaching XDP program with ID %u from %s\n", xdp_program__id(prog), cfg->ifname);
+        err = xdp_program__detach(prog, cfg->ifindex, mode, 0);
+        if (err) {
+            fprintf(stderr, "Unable to detach XDP program: %s\n", strerror(-err));
+            goto out;
+        }
     }
 
-    return EXIT_OK;
+out:
+    xdp_multiprog__close(mp);
+    return err ? EXIT_FAILURE : EXIT_SUCCESS;
 }

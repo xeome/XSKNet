@@ -72,3 +72,5 @@ xdp_sample_pkts_user
 config.mk
 
 .vscode
+bin/*
+obj/*
