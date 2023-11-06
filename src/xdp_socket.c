@@ -97,6 +97,7 @@ struct xsk_socket_info* init_xsk_socket(struct config* cfg, int xsk_map_fd) {
 
     size = NUM_FRAMES * FRAME_SIZE;
 
+    /* Allocate memory for NUM_FRAMES of the default XDP frame size */
     ret = posix_memalign(&buffer, getpagesize(), size);
     if (ret) {
         errno = -ret;
@@ -104,6 +105,7 @@ struct xsk_socket_info* init_xsk_socket(struct config* cfg, int xsk_map_fd) {
         exit(EXIT_FAIL_MEM);
     }
 
+    /* Initialize shared packet_buffer for umem usage */
     umem = configure_xsk_umem(buffer, size);
     if (umem == NULL) {
         errno = -ret;

@@ -1,3 +1,9 @@
+/*
+ * File: xdp_socket.h
+ * This file contains the implementation of the XDP socket, it contains functions responsible for creating the umem and the
+ * xsk socket.
+ */
+
 #pragma once
 
 #define NUM_FRAMES 4096
