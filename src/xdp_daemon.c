@@ -2,13 +2,8 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include <arpa/inet.h>
-#include <linux/icmpv6.h>
-#include <linux/if_ether.h>
-#include <linux/if_link.h>
-#include <linux/ipv6.h>
-#include <net/if.h>
 #include <sys/resource.h>
+#include <pthread.h>
 
 #include <bpf/bpf.h>
 #include <xdp/libxdp.h>
@@ -20,6 +15,7 @@
 #include "xdp_receive.h"
 #include "defs.h"
 #include "lwlog.h"
+#include "socket_stats.h"
 
 int xsk_map_fd;
 bool global_exit;
@@ -82,7 +78,6 @@ int main(int argc, char** argv) {
 
     /* Load XDP kernel program */
     err = load_xdp_program(&cfg, prog, &xsk_map_fd);
-
     if (err) {
         lwlog_crit("ERROR: loading program: %s\n", strerror(err));
         exit(1);
@@ -97,6 +92,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
+    /* Create AF_XDP socket */
     struct xsk_socket_info* xsk_socket;
     xsk_socket = init_xsk_socket(&cfg, xsk_map_fd);
     if (xsk_socket == NULL) {
@@ -104,6 +100,24 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
+    /* Start statistics thread */
+    pthread_t stats_poll_thread;
+
+    struct poll_arg poll_arg = {
+        .xsk = xsk_socket,
+        .global_exit = &global_exit,
+    };
+
+    err = pthread_create(&stats_poll_thread, NULL, stats_poll, &poll_arg);
+    if (err) {
+        fprintf(stderr,
+                "ERROR: Failed creating statistics thread "
+                "\"%s\"\n",
+                strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* Start receiving */
     rx_and_process(&cfg, xsk_socket, &global_exit);
     lwlog_info("Exited from poll loop");
 

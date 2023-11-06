@@ -11,14 +11,20 @@ INC_PATH := include
 
 SRC_FILES := $(wildcard $(SRC_PATH)/*.c)
 KERN_SRC := $(SRC_PATH)/xdp_kern.c
+USER_SRC := $(filter-out $(SRC_PATH)/xdp_daemon.c, $(SRC_FILES))
+DAEMON_SRC := $(filter-out $(SRC_PATH)/xdp_user.c, $(SRC_FILES))
 
-all: $(BIN_PATH)/xdp_daemon $(OBJ_PATH)/xdp_kern_obj.o
+
+all: $(BIN_PATH)/xdp_daemon $(OBJ_PATH)/xdp_kern_obj.o $(BIN_PATH)/xdp_user
 
 $(OBJ_PATH)/xdp_kern_obj.o: $(KERN_SRC)
 	$(CXX) $(CCOBJBPFFLAGS) -I$(INC_PATH) -o $@ $(KERN_SRC)
 
 $(BIN_PATH)/xdp_daemon: $(SRC_FILES)
-	$(CXX) $(CXXFLAGS) -I$(INC_PATH) -o $@ $^ -lxdp -lbpf
+	$(CXX) $(CXXFLAGS) -I$(INC_PATH) -o $@ $(DAEMON_SRC) -lxdp -lbpf
+
+$(BIN_PATH)/xdp_user: $(SRC_FILES)
+	$(CXX) $(CXXFLAGS) -I$(INC_PATH) -o $@ $(USER_SRC) -lxdp -lbpf 
 
 
 clean:

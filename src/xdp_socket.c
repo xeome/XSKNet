@@ -7,7 +7,6 @@
 #include <xdp/libxdp.h>
 #include <xdp/xsk.h>
 
-#include "defs.h"
 #include "lwlog.h"
 #include "xdp_socket.h"
 
