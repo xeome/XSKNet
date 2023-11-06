@@ -16,6 +16,7 @@
 #include "defs.h"
 #include "lwlog.h"
 #include "socket_stats.h"
+#include "socket99.h"
 
 int xsk_map_fd;
 bool global_exit;
@@ -117,7 +118,22 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    /* Start receiving */
+    socket99_config sock_cfg = {
+        .host = "127.0.0.1",
+        .port = 8080,
+        .server = true,
+        .nonblocking = true,
+    };
+
+    socket99_result res;  // result output in this struct
+    bool ok = socket99_open(&sock_cfg, &res);
+
+    if (!ok) {
+        lwlog_crit("ERROR: Can't create socket \"%s\"", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* Start receiving (Blocking)*/
     rx_and_process(&cfg, xsk_socket, &global_exit);
     lwlog_info("Exited from poll loop");
 
