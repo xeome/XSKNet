@@ -9,44 +9,7 @@
 
 #include "defs.h"
 #include "lwlog.h"
-
-#define NUM_FRAMES 4096
-#define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
-#define RX_BATCH_SIZE 64
-#define INVALID_UMEM_FRAME UINT64_MAX
-
-struct xsk_umem_info {
-    struct xsk_ring_prod fq;
-    struct xsk_ring_cons cq;
-    struct xsk_umem* umem;
-    void* buffer;
-};
-struct stats_record {
-    uint64_t timestamp;
-    uint64_t rx_packets;
-    uint64_t rx_bytes;
-    uint64_t tx_packets;
-    uint64_t tx_bytes;
-};
-struct xsk_socket_info {
-    struct xsk_ring_cons rx;
-    struct xsk_ring_prod tx;
-    struct xsk_umem_info* umem;
-    struct xsk_socket* xsk;
-
-    uint64_t umem_frame_addr[NUM_FRAMES];
-    uint32_t umem_frame_free;
-
-    uint32_t outstanding_tx;
-
-    struct stats_record stats;
-    struct stats_record prev_stats;
-};
-
-static inline __u32 xsk_ring_prod__free(struct xsk_ring_prod* r) {
-    r->cached_cons = *r->consumer + r->size;
-    return r->cached_cons - r->cached_prod;
-}
+#include "xdp_socket.h"
 
 static struct xsk_umem_info* configure_xsk_umem(void* buffer, uint64_t size) {
     struct xsk_umem_info* umem;
@@ -74,16 +37,6 @@ static uint64_t xsk_alloc_umem_frame(struct xsk_socket_info* xsk) {
     frame = xsk->umem_frame_addr[--xsk->umem_frame_free];
     xsk->umem_frame_addr[xsk->umem_frame_free] = INVALID_UMEM_FRAME;
     return frame;
-}
-
-static void xsk_free_umem_frame(struct xsk_socket_info* xsk, uint64_t frame) {
-    assert(xsk->umem_frame_free < NUM_FRAMES);
-
-    xsk->umem_frame_addr[xsk->umem_frame_free++] = frame;
-}
-
-static uint64_t xsk_umem_free_frames(struct xsk_socket_info* xsk) {
-    return xsk->umem_frame_free;
 }
 
 static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct xsk_umem_info* umem, int xsk_map_fd) {

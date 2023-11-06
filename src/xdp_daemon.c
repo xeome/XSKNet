@@ -17,11 +17,12 @@
 #include "xdp_daemon.h"
 #include "xdp_load.h"
 #include "xdp_socket.h"
+#include "xdp_receive.h"
 #include "defs.h"
 #include "lwlog.h"
 
 int xsk_map_fd;
-static bool global_exit;
+bool global_exit;
 struct xdp_program* prog;
 
 static struct config cfg = {
@@ -63,6 +64,7 @@ const struct option_wrapper long_options[] = {
 
 int main(int argc, char** argv) {
     int err;
+    global_exit = false;
 
     signal(SIGINT, exit_application);
 
@@ -102,15 +104,32 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    while (!global_exit) {
-        sleep(1);
+    rx_and_process(&cfg, xsk_socket, &global_exit);
+    lwlog_info("Exited from poll loop");
+
+    /* Cleanup */
+    xsk_socket__delete(xsk_socket->xsk);
+    lwlog_info("XSK socket deleted");
+    err = xsk_umem__delete(xsk_socket->umem->umem);
+
+    if (err) {
+        lwlog_crit("ERROR: Can't destroy umem \"%s\"", strerror(errno));
+        exit(EXIT_FAILURE);
     }
+    lwlog_info("UMEM destroyed");
 
     return 0;
 }
 
-void exit_application(int sig) {
+void exit_application(int signal) {
+    int err;
+
+    cfg.unload_all = true;
+    err = do_unload(&cfg);
+    if (err) {
+        lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
+    }
+
+    lwlog_info("Exiting XDP Daemon");
     global_exit = true;
-    lwlog_info("Stopping XDP Daemon");
-    do_unload(&cfg);
 }

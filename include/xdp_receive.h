@@ -1,0 +1,1 @@
+void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool* global_exit);
