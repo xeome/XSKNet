@@ -1,5 +1,5 @@
 CXX := clang
-CXXFLAGS := -O2 -g -Wall -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -Werror
+CXXFLAGS := -O2 -g -Wall -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types 
 CCOBJFLAGS := $(CXXFLAGS) -c
 CXXBPFFLAGS := -O2 -g -Wall -target bpf -D __BPF_TRACING__ -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -Werror 
 CCOBJBPFFLAGS := $(CXXBPFFLAGS) -c

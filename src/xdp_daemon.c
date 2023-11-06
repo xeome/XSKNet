@@ -8,6 +8,7 @@
 #include <linux/if_link.h>
 #include <linux/ipv6.h>
 #include <net/if.h>
+#include <sys/resource.h>
 
 #include <bpf/bpf.h>
 #include <xdp/libxdp.h>
@@ -15,13 +16,9 @@
 
 #include "xdp_daemon.h"
 #include "xdp_load.h"
+#include "xdp_socket.h"
 #include "defs.h"
 #include "lwlog.h"
-
-#define NUM_FRAMES 4096
-#define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
-#define RX_BATCH_SIZE 64
-#define INVALID_UMEM_FRAME UINT64_MAX
 
 int xsk_map_fd;
 static bool global_exit;
@@ -70,6 +67,7 @@ int main(int argc, char** argv) {
     signal(SIGINT, exit_application);
 
     lwlog_info("Starting XDP Daemon");
+
     /* Cmdline options can change progname */
     parse_cmdline_args(argc, argv, long_options, &cfg, __doc__);
 
@@ -84,9 +82,24 @@ int main(int argc, char** argv) {
     err = load_xdp_program(&cfg, prog, &xsk_map_fd);
 
     if (err) {
-        // fprintf(stderr, "ERROR: loading program: %s\n", strerror(err));
         lwlog_crit("ERROR: loading program: %s\n", strerror(err));
         exit(1);
+    }
+
+    /* Allow unlimited locking of memory, so all memory needed for packet
+     * buffers can be locked.
+     */
+    struct rlimit rlim = {RLIM_INFINITY, RLIM_INFINITY};
+    if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
+        fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    struct xsk_socket_info* xsk_socket;
+    xsk_socket = init_xsk_socket(&cfg, xsk_map_fd);
+    if (xsk_socket == NULL) {
+        lwlog_crit("ERROR: Can't create xsk socket \"%s\"", strerror(errno));
+        exit(EXIT_FAILURE);
     }
 
     while (!global_exit) {
