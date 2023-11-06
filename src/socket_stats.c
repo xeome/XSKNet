@@ -15,7 +15,7 @@ static uint64_t gettime(void) {
 
     res = clock_gettime(CLOCK_MONOTONIC, &t);
     if (res < 0) {
-        fprintf(stderr, "Error with gettimeofday! (%i)\n", res);
+        lwlog_crit("Error with gettimeofday! (%i)\n", res);
         exit(EXIT_FAIL);
     }
     return (uint64_t)t.tv_sec * NANOSEC_PER_SEC + t.tv_nsec;

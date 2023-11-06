@@ -11,4 +11,6 @@
 #include "defs.h"
 #include "lwlog.h"
 
+bool global_exit;
+
 int main(int argc, char** argv) {}
