@@ -7,6 +7,7 @@
 
 #include "defs.h"
 #include "xdp_load.h"
+#include "lwlog.h"
 
 int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_fd) {
     int err;
@@ -30,14 +31,16 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_
         err = libxdp_get_error(prog);
         if (err) {
             libxdp_strerror(err, errmsg, sizeof(errmsg));
-            fprintf(stderr, "ERR: loading program: %s\n", errmsg);
+            // fprintf(stderr, "ERR: loading program: %s\n", errmsg);
+            lwlog_err("ERR: loading program: %s", errmsg);
             return err;
         }
 
         err = xdp_program__attach(prog, cfg->ifindex, cfg->attach_mode, 0);
         if (err) {
             libxdp_strerror(err, errmsg, sizeof(errmsg));
-            fprintf(stderr, "Couldn't attach XDP program on iface '%s' : %s (%d)\n", cfg->ifname, errmsg, err);
+            // fprintf(stderr, "Couldn't attach XDP program on iface '%s' : %s (%d)\n", cfg->ifname, errmsg, err);
+            lwlog_err("Couldn't attach XDP program on iface '%s' : %s (%d)", cfg->ifname, errmsg, err);
             return err;
         }
 
@@ -45,7 +48,8 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_
         map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog), "xsks_map");
         *xsk_map_fd = bpf_map__fd(map);
         if (*xsk_map_fd < 0) {
-            fprintf(stderr, "ERROR: no xsks map found: %s\n", strerror(*xsk_map_fd));
+            // fprintf(stderr, "ERROR: no xsks map found: %s\n", strerror(*xsk_map_fd));
+            lwlog_crit("ERROR: no xsks map found: %s", strerror(*xsk_map_fd));
             exit(EXIT_FAIL);
         }
     }
@@ -61,10 +65,12 @@ int do_unload(struct config* cfg) {
 
     mp = xdp_multiprog__get_from_ifindex(cfg->ifindex);
     if (libxdp_get_error(mp)) {
-        fprintf(stderr, "Unable to get xdp_dispatcher program: %s\n", strerror(errno));
+        // fprintf(stderr, "Unable to get xdp_dispatcher program: %s\n", strerror(errno));
+        lwlog_warning("Unable to get xdp_dispatcher program: %s", strerror(errno));
         goto out;
     } else if (!mp) {
-        fprintf(stderr, "No XDP program loaded on %s\n", cfg->ifname);
+        // fprintf(stderr, "No XDP program loaded on %s\n", cfg->ifname);
+        lwlog_warning("No XDP program loaded on %s", cfg->ifname);
         mp = NULL;
         goto out;
     }
@@ -72,7 +78,8 @@ int do_unload(struct config* cfg) {
     if (cfg->unload_all) {
         err = xdp_multiprog__detach(mp);
         if (err) {
-            fprintf(stderr, "Unable to detach XDP program: %s\n", strerror(-err));
+            // fprintf(stderr, "Unable to detach XDP program: %s\n", strerror(-err));
+            lwlog_warning("Unable to detach XDP program: %s", strerror(-err));
             goto out;
         }
     } else {
@@ -99,15 +106,18 @@ int do_unload(struct config* cfg) {
             goto found;
         }
 
-        printf("Program with ID %u not loaded on %s\n", cfg->prog_id, cfg->ifname);
+        // printf("Program with ID %u not loaded on %s\n", cfg->prog_id, cfg->ifname);
+        lwlog_warning("Program with ID %u not loaded on %s", cfg->prog_id, cfg->ifname);
         err = -ENOENT;
         goto out;
 
     found:
-        printf("Detaching XDP program with ID %u from %s\n", xdp_program__id(prog), cfg->ifname);
+        // printf("Detaching XDP program with ID %u from %s\n", xdp_program__id(prog), cfg->ifname);
+        lwlog_info("Detaching XDP program with ID %u from %s", xdp_program__id(prog), cfg->ifname);
         err = xdp_program__detach(prog, cfg->ifindex, mode, 0);
         if (err) {
-            fprintf(stderr, "Unable to detach XDP program: %s\n", strerror(-err));
+            // fprintf(stderr, "Unable to detach XDP program: %s\n", strerror(-err));
+            lwlog_warning("Unable to detach XDP program: %s", strerror(-err));
             goto out;
         }
     }

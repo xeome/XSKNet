@@ -16,6 +16,7 @@
 #include "xdp_daemon.h"
 #include "xdp_load.h"
 #include "defs.h"
+#include "lwlog.h"
 
 #define NUM_FRAMES 4096
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
@@ -68,20 +69,23 @@ int main(int argc, char** argv) {
 
     signal(SIGINT, exit_application);
 
+    lwlog_info("Starting XDP Daemon");
     /* Cmdline options can change progname */
     parse_cmdline_args(argc, argv, long_options, &cfg, __doc__);
 
     /* Required option */
     if (cfg.ifindex == -1) {
-        fprintf(stderr, "ERROR: Required option --dev missing\n\n");
+        lwlog_crit("ERROR: Required option --dev missing\n\n");
         usage(argv[0], __doc__, long_options, (argc == 1));
         return EXIT_FAIL_OPTION;
     }
 
+    /* Load XDP kernel program */
     err = load_xdp_program(&cfg, prog, &xsk_map_fd);
 
     if (err) {
-        fprintf(stderr, "ERROR: loading program: %s\n", strerror(err));
+        // fprintf(stderr, "ERROR: loading program: %s\n", strerror(err));
+        lwlog_crit("ERROR: loading program: %s\n", strerror(err));
         exit(1);
     }
 
@@ -94,5 +98,6 @@ int main(int argc, char** argv) {
 
 void exit_application(int sig) {
     global_exit = true;
+    lwlog_info("Stopping XDP Daemon");
     do_unload(&cfg);
 }
