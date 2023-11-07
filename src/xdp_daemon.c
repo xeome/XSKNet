@@ -188,7 +188,6 @@ void* tcp_server_nonblocking() {
     struct pollfd fds[2] = {{.fd = res.fd, .events = POLLIN}};
 
     while (!global_exit) {
-        lwlog_info("Waiting for client");
         int nready = poll(fds, 1, 3000);
         if (nready < 0) {
             handle_error("poll failed");

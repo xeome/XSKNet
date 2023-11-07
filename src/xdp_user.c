@@ -28,6 +28,7 @@ static struct config cfg = {
 int main(int argc, char** argv) {
     int err;
 
+    /* get xsk map fd from xdp daemon */
     bool ret = get_map_fd();
     if (!ret) {
         lwlog_err("Failed to get map fd");
@@ -39,7 +40,7 @@ int main(int argc, char** argv) {
      */
     struct rlimit rlim = {RLIM_INFINITY, RLIM_INFINITY};
     if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
-        fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
+        lwlog_err("ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -73,6 +74,7 @@ int main(int argc, char** argv) {
     lwlog_info("Exited from poll loop");
 
     /* Wait for threads to finish */
+    lwlog_info("Waiting for threads to finish");
     pthread_join(stats_poll_thread, NULL);
 
     /* Cleanup */

@@ -53,13 +53,22 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
     xsk_cfg.xdp_flags = cfg->xdp_flags;
     xsk_cfg.bind_flags = cfg->xsk_bind_flags;
     xsk_cfg.libbpf_flags = XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD;
+
+    // Temporary hardcode
+    cfg->xsk_if_queue = 0;
+    cfg->ifname = "test";
+
     ret = xsk_socket__create(&xsk_info->xsk, cfg->ifname, cfg->xsk_if_queue, umem->umem, &xsk_info->rx, &xsk_info->tx, &xsk_cfg);
-    if (ret)
+    if (ret) {
+        lwlog_crit("ERROR: Can't create xsk socket \"%s\"", strerror(errno));
         goto error_exit;
+    }
 
     ret = xsk_socket__update_xskmap(xsk_info->xsk, xsk_map_fd);
-    if (ret)
+    if (ret) {
+        lwlog_crit("ERROR: Can't update xskmap \"%s\" with fd %d", strerror(errno), xsk_map_fd);
         goto error_exit;
+    }
 
     /* Initialize umem frame allocation */
     for (i = 0; i < NUM_FRAMES; i++)
@@ -70,8 +79,10 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
     /* Stuff the receive path with buffers, we assume we have enough */
     ret = xsk_ring_prod__reserve(&xsk_info->umem->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS, &idx);
 
-    if (ret != XSK_RING_PROD__DEFAULT_NUM_DESCS)
+    if (ret != XSK_RING_PROD__DEFAULT_NUM_DESCS) {
+        lwlog_crit("ERROR: Can't reserve enough space for fill queue \"%s\"", strerror(errno));
         goto error_exit;
+    }
 
     for (i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS; i++)
         *xsk_ring_prod__fill_addr(&xsk_info->umem->fq, idx++) = xsk_alloc_umem_frame(xsk_info);

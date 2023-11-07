@@ -47,6 +47,7 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_
         /* We also need to load the xsks_map */
         map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog), "xsks_map");
         *xsk_map_fd = bpf_map__fd(map);
+        lwlog_info("Found xsks_map with fd %d", *xsk_map_fd);
         if (*xsk_map_fd < 0) {
             // fprintf(stderr, "ERROR: no xsks map found: %s\n", strerror(*xsk_map_fd));
             lwlog_crit("ERROR: no xsks map found: %s", strerror(*xsk_map_fd));
