@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include <bpf/bpf.h>
 #include <xdp/libxdp.h>
@@ -8,6 +9,54 @@
 #include "defs.h"
 #include "xdp_load.h"
 #include "lwlog.h"
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+static const char* pin_basedir = "/sys/fs/bpf";
+const char* map_name = "xsks_map";
+
+/* Pinning maps under /sys/fs/bpf in subdir */
+int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir) {
+    char map_filename[PATH_MAX];
+    char pin_dir[PATH_MAX];
+    int err, len;
+
+    len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, subdir);
+    if (len < 0) {
+        fprintf(stderr, "ERR: creating pin dirname\n");
+        return EXIT_FAIL_OPTION;
+    }
+
+    len = snprintf(map_filename, PATH_MAX, "%s/%s/%s", pin_basedir, subdir, map_name);
+    if (len < 0) {
+        fprintf(stderr, "ERR: creating map_name\n");
+        return EXIT_FAIL_OPTION;
+    }
+
+    /* Existing/previous XDP prog might not have cleaned up */
+    if (access(map_filename, F_OK) != -1) {
+        if (verbose)
+            printf(" - Unpinning (remove) prev maps in %s/\n", pin_dir);
+
+        /* Basically calls unlink(3) on map_filename */
+        err = bpf_object__unpin_maps(bpf_obj, pin_dir);
+        if (err) {
+            fprintf(stderr, "ERR: UNpinning maps in %s\n", pin_dir);
+            return EXIT_FAIL_BPF;
+        }
+    }
+    if (verbose)
+        lwlog_info("Pinning maps in %s/", pin_dir);
+
+    /* This will pin all maps in our bpf_object */
+    err = bpf_object__pin_maps(bpf_obj, pin_dir);
+    if (err)
+        return EXIT_FAIL_BPF;
+
+    return 0;
+}
 
 int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_fd) {
     int err;
@@ -31,7 +80,6 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_
         err = libxdp_get_error(prog);
         if (err) {
             libxdp_strerror(err, errmsg, sizeof(errmsg));
-            // fprintf(stderr, "ERR: loading program: %s\n", errmsg);
             lwlog_err("ERR: loading program: %s", errmsg);
             return err;
         }
@@ -39,7 +87,6 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_
         err = xdp_program__attach(prog, cfg->ifindex, cfg->attach_mode, 0);
         if (err) {
             libxdp_strerror(err, errmsg, sizeof(errmsg));
-            // fprintf(stderr, "Couldn't attach XDP program on iface '%s' : %s (%d)\n", cfg->ifname, errmsg, err);
             lwlog_err("Couldn't attach XDP program on iface '%s' : %s (%d)", cfg->ifname, errmsg, err);
             return err;
         }
@@ -49,9 +96,15 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_
         *xsk_map_fd = bpf_map__fd(map);
         lwlog_info("Found xsks_map with fd %d", *xsk_map_fd);
         if (*xsk_map_fd < 0) {
-            // fprintf(stderr, "ERROR: no xsks map found: %s\n", strerror(*xsk_map_fd));
             lwlog_crit("ERROR: no xsks map found: %s", strerror(*xsk_map_fd));
             exit(EXIT_FAIL);
+        }
+
+        /* Pin the maps */
+        err = pin_maps_in_bpf_object(xdp_program__bpf_obj(prog), cfg->ifname);
+        if (err) {
+            lwlog_err("ERR: pinning maps in %s", cfg->ifname);
+            return err;
         }
     }
 

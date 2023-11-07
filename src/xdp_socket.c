@@ -7,6 +7,13 @@
 
 #include "lwlog.h"
 #include "xdp_socket.h"
+#include "common_user_bpf_xdp.h"
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+static const char* pin_basedir = "/sys/fs/bpf";
 
 static struct xsk_umem_info* configure_xsk_umem(void* buffer, uint64_t size) {
     struct xsk_umem_info* umem;
@@ -39,6 +46,7 @@ static uint64_t xsk_alloc_umem_frame(struct xsk_socket_info* xsk) {
 static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct xsk_umem_info* umem, int xsk_map_fd) {
     struct xsk_socket_config xsk_cfg;
     struct xsk_socket_info* xsk_info;
+    struct bpf_map_info info = {0};
     uint32_t idx;
     int i;
     int ret;
@@ -58,12 +66,30 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
     cfg->xsk_if_queue = 0;
     cfg->ifname = "test";
 
+    /* Create the AF_XDP socket */
     ret = xsk_socket__create(&xsk_info->xsk, cfg->ifname, cfg->xsk_if_queue, umem->umem, &xsk_info->rx, &xsk_info->tx, &xsk_cfg);
     if (ret) {
         lwlog_crit("ERROR: Can't create xsk socket \"%s\"", strerror(errno));
         goto error_exit;
     }
 
+    char pin_dir[PATH_MAX];
+    /* Use the --dev name as subdir for finding pinned maps */
+    int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, cfg->ifname);
+    if (len < 0) {
+        fprintf(stderr, "ERR: creating pin dirname\n");
+        return NULL;
+    }
+
+    /* Get xsk_map fd from pinned map */
+
+    xsk_map_fd = open_bpf_map_file(pin_dir, "xsks_map", &info);
+    if (xsk_map_fd < 0) {
+        lwlog_crit("ERROR: Can't open xskmap \"%s\"", strerror(errno));
+        goto error_exit;
+    }
+
+    /* Update the xskmap with the xsk socket fd */
     ret = xsk_socket__update_xskmap(xsk_info->xsk, xsk_map_fd);
     if (ret) {
         lwlog_crit("ERROR: Can't update xskmap \"%s\" with fd %d", strerror(errno), xsk_map_fd);

@@ -8,18 +8,20 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/src/af_xdp_user",
+            "program": "${workspaceFolder}/bin/xdp_daemon",
             "args": [
-                "-d test",
-                "--filename af_xdp_kern.o",
+                "-d", 
+                "test",
+                "--filename",
+                "obj/xdp_kern_obj.o",
                 "-p"
             ],
             "stopAtEntry": false,
-            "cwd": "${fileDirname}",
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
-            "miDebuggerPath": "/usr/bin/gdb",
+            "miDebuggerPath": "${workspaceFolder}/debug_root.sh",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
