@@ -174,7 +174,7 @@ void* tcp_server_nonblocking() {
         .nonblocking = true,
         .sockopts =
             {
-                {SO_BROADCAST, &v_true, sizeof(v_true)},
+                {SO_REUSEADDR, &v_true, sizeof(v_true)},
             },
 
     };
@@ -189,7 +189,7 @@ void* tcp_server_nonblocking() {
 
     while (!global_exit) {
         lwlog_info("Waiting for client");
-        int nready = poll(fds, 1, 3000);  // Timeout set to 3000ms
+        int nready = poll(fds, 1, 3000);
         if (nready < 0) {
             handle_error("poll failed");
             break;

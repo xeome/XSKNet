@@ -15,6 +15,7 @@
 #include "defs.h"
 #include "lwlog.h"
 #include "socket99.h"
+#include "xdp_user.h"
 
 int xsk_map_fd;
 static bool global_exit;
@@ -26,70 +27,12 @@ static struct config cfg = {
 
 int main(int argc, char** argv) {
     int err;
-    socket99_config socket_cfg = {
-        .host = "127.0.0.1",
-        .port = 8080,
-        .nonblocking = true,
-    };
 
-    socket99_result res;
-    bool ok = socket99_open(&socket_cfg, &res);
-    if (!ok) {
-        socket99_fprintf(stderr, &res);
-        return false;
+    bool ret = get_map_fd();
+    if (!ret) {
+        lwlog_err("Failed to get map fd");
+        exit(EXIT_FAILURE);
     }
-
-    struct pollfd fds[1] = {
-        {res.fd, POLLOUT, 0},
-    };
-    const int TIMEOUT_MSEC = 10 * 1000;
-
-    int pres = poll(fds, 1, TIMEOUT_MSEC);
-    if (pres == -1) {
-        printf("poll: %s\n", strerror(errno));
-        errno = 0;
-        return false;
-    }
-
-    if (pres != 1) {
-        lwlog_err("poll: pres != 1");
-        return false;
-    }
-
-    const char* msg = "getxskmapfd";
-    size_t msg_size = strlen(msg);
-    if (fds[0].revents & POLLOUT) {
-        ssize_t sent = send(res.fd, msg, msg_size, 0);
-        lwlog_info("sent: %ld bytes", sent);
-
-        char buffer[1024] = {0};
-        ssize_t valread;
-        struct pollfd pfd = {.fd = res.fd, .events = POLLIN};  // Set up pollfd structure for polling
-
-        do {
-            int poll_res = poll(&pfd, 1, -1);  // Poll indefinitely until data is available to read
-            if (poll_res == -1) {
-                lwlog_err("poll: %s", strerror(errno));
-                return false;
-            }
-
-            if (pfd.revents & POLLIN) {  // If data is available to read
-                valread = recv(res.fd, buffer, 1024, 0);
-                if (valread == -1) {
-                    lwlog_err("recv: %s", strerror(errno));
-                    return false;
-                }
-            }
-        } while (valread == -1);
-
-        lwlog_info("received: %s", buffer);
-        xsk_map_fd = atoi(buffer);
-    }
-
-    if (fds[0].revents & POLLERR || fds[0].revents & POLLHUP) {
-        lwlog_err("poll: POLLERR or POLLHUP");
-    }
-    close(res.fd);
 
     /* Allow unlimited locking of memory, so all memory needed for packet
      * buffers can be locked.
@@ -143,4 +86,57 @@ int main(int argc, char** argv) {
     lwlog_info("UMEM destroyed");
 
     return 0;
+}
+
+bool get_map_fd() {
+    socket99_config socket_cfg = {
+        .host = "127.0.0.1",
+        .port = 8080,
+    };
+
+    socket99_result res;
+    if (!socket99_open(&socket_cfg, &res)) {
+        socket99_fprintf(stderr, &res);
+        return false;
+    }
+
+    const int TIMEOUT_MSEC = 10 * 1000;
+
+    struct pollfd fd = {.fd = res.fd, .events = POLLOUT};
+    if (poll(&fd, 1, TIMEOUT_MSEC) <= 0) {
+        lwlog_err("poll: %s", strerror(errno));
+        close(res.fd);
+        errno = 0;
+        return false;
+    }
+
+    if (fd.revents & POLLOUT) {
+        const char* msg = "getxskmapfd";
+        ssize_t sent = send(res.fd, msg, strlen(msg), 0);
+        lwlog_info("sent: %ld bytes", sent);
+        if (sent == -1) {
+            lwlog_err("send: %s", strerror(errno));
+            close(res.fd);
+            return false;
+        }
+
+        fd.events = POLLIN;
+        char buffer[1024] = {0};
+        ssize_t valread = recv(res.fd, buffer, sizeof(buffer) - 1, 0);
+        if (valread == -1) {
+            lwlog_err("recv: %s", strerror(errno));
+            close(res.fd);
+            return false;
+        }
+
+        lwlog_info("received: %s", buffer);
+        xsk_map_fd = atoi(buffer);
+    } else if (fd.revents & (POLLERR | POLLHUP)) {
+        lwlog_err("poll: POLLERR or POLLHUP");
+        close(res.fd);
+        return false;
+    }
+
+    close(res.fd);
+    return true;
 }
