@@ -17,6 +17,7 @@
 #include "socket_stats.h"
 #include "socket99.h"
 
+#define PORT 8080
 int xsk_map_fd;
 bool global_exit;
 struct xdp_program* prog;
@@ -63,6 +64,7 @@ int main(int argc, char** argv) {
     global_exit = false;
 
     signal(SIGINT, exit_application);
+    signal(SIGTERM, exit_application);
 
     lwlog_info("Starting XDP Daemon");
 
@@ -83,43 +85,38 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    /* Allow unlimited locking of memory, so all memory needed for packet
-     * buffers can be locked.
-     */
-    struct rlimit rlim = {RLIM_INFINITY, RLIM_INFINITY};
-    if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
-        fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
+    // /* Allow unlimited locking of memory, so all memory needed for packet
+    //  * buffers can be locked.
+    //  */
+    // struct rlimit rlim = {RLIM_INFINITY, RLIM_INFINITY};
+    // if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
+    //     fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
+    //     exit(EXIT_FAILURE);
+    // }
 
-    /* Create AF_XDP socket */
-    struct xsk_socket_info* xsk_socket;
-    xsk_socket = init_xsk_socket(&cfg, xsk_map_fd);
-    if (xsk_socket == NULL) {
-        lwlog_crit("ERROR: Can't create xsk socket \"%s\"", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
+    // /* Create AF_XDP socket */
+    // struct xsk_socket_info* xsk_socket;
+    // xsk_socket = init_xsk_socket(&cfg, xsk_map_fd);
+    // if (xsk_socket == NULL) {
+    //     lwlog_crit("ERROR: Can't create xsk socket \"%s\"", strerror(errno));
+    //     exit(EXIT_FAILURE);
+    // }
 
-    /* Start statistics thread (non-blocking) */
-    pthread_t stats_poll_thread;
+    // /* Start statistics thread (non-blocking) */
+    // pthread_t stats_poll_thread;
 
-    struct poll_arg poll_arg = {
-        .xsk = xsk_socket,
-        .global_exit = &global_exit,
-    };
+    // struct poll_arg poll_arg = {
+    //     .xsk = xsk_socket,
+    //     .global_exit = &global_exit,
+    // };
 
-    err = pthread_create(&stats_poll_thread, NULL, stats_poll, &poll_arg);
-    if (err) {
-        fprintf(stderr,
-                "ERROR: Failed creating statistics thread "
-                "\"%s\"\n",
-                strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    // bool res = tcp_server_nonblocking();
-    // if (!res) {
-    //     lwlog_err("Exiting TCP server");
+    // err = pthread_create(&stats_poll_thread, NULL, stats_poll, &poll_arg);
+    // if (err) {
+    //     fprintf(stderr,
+    //             "ERROR: Failed creating statistics thread "
+    //             "\"%s\"\n",
+    //             strerror(errno));
+    //     exit(EXIT_FAILURE);
     // }
 
     /* Start socket (Polling and non-blocking) */
@@ -134,23 +131,22 @@ int main(int argc, char** argv) {
     }
 
     /* Start receiving (Blocking)*/
-    rx_and_process(&cfg, xsk_socket, &global_exit);
-    lwlog_info("Exited from poll loop");
+    // rx_and_process(&cfg, xsk_socket, &global_exit);
+    // lwlog_info("Exited from poll loop");
 
     /* Wait for threads to finish */
-    pthread_join(stats_poll_thread, NULL);
+    // pthread_join(stats_poll_thread, NULL);
     pthread_join(socket_thread, NULL);
 
     /* Cleanup */
-    xsk_socket__delete(xsk_socket->xsk);
+    // xsk_socket__delete(xsk_socket->xsk);
     lwlog_info("XSK socket deleted");
-    err = xsk_umem__delete(xsk_socket->umem->umem);
-
-    if (err) {
-        lwlog_crit("ERROR: Can't destroy umem \"%s\"", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-    lwlog_info("UMEM destroyed");
+    // err = xsk_umem__delete(xsk_socket->umem->umem);
+    // if (err) {
+    //     lwlog_crit("ERROR: Can't destroy umem \"%s\"", strerror(errno));
+    //     exit(EXIT_FAILURE);
+    // }
+    // lwlog_info("UMEM destroyed");
 
     return 0;
 }
@@ -171,94 +167,82 @@ void exit_application(int signal) {
 
 void* tcp_server_nonblocking() {
     int v_true = 1;
-
-    socket99_config socket_cfg = {
+    socket99_config cfg = {
         .host = "127.0.0.1",
-        .port = 8080,
+        .port = PORT,
         .server = true,
         .nonblocking = true,
+        .sockopts =
+            {
+                {SO_BROADCAST, &v_true, sizeof(v_true)},
+            },
 
     };
 
     socket99_result res;
-    bool ok = socket99_open(&socket_cfg, &res);
-    if (!ok) {
-        char buf[128];
-        /* Example use of socket99_snprintf */
-        if (128 < socket99_snprintf(buf, 128, &res)) {
-            /* error message too long */
-            socket99_fprintf(stderr, &res);
-        } else {
-            fprintf(stderr, "%s\n", buf);
-        }
-        return false;
+    if (!socket99_open(&cfg, &res)) {
+        handle_error("socket99_open failed");
+        return NULL;
     }
 
-    struct pollfd socket_fds[2];
-    socket_fds[0].fd = res.fd;
-    socket_fds[0].events = POLLIN;
-
-    ssize_t received = 0;
-    nfds_t poll_fds = 1;
-    int client_fd = -1;
+    struct pollfd fds[2] = {{.fd = res.fd, .events = POLLIN}};
 
     while (!global_exit) {
-        int poll_res = poll(socket_fds, poll_fds, 1000 /* msec */);
-
-        if (poll_res <= 0)
-            continue;
-
-        if (socket_fds[0].revents & POLLIN && !global_exit) {
-            struct sockaddr address;
-            socklen_t addr_len;
-            client_fd = accept(res.fd, &address, &addr_len);
-
-            if (client_fd == -1) {
-                if (errno == EAGAIN) {
-                    errno = 0;
-                    continue;
-                } else {
-                    break;
-                }
-            } else {
-                socket_fds[1].fd = client_fd;
-                socket_fds[1].events = POLLIN;
-                poll_fds = 2;
-            }
-        } else if (socket_fds[0].revents & POLLERR || socket_fds[0].revents & POLLHUP) {
-            lwlog_err("POLLERR / POLLHUP");
+        lwlog_info("Waiting for client");
+        int nready = poll(fds, 1, 3000);  // Timeout set to 3000ms
+        if (nready < 0) {
+            handle_error("poll failed");
             break;
         }
+        if (nready == 0)
+            continue;  // Timeout with no events
 
-        if (poll_fds <= 1)
-            continue;
-
-        if ((socket_fds[1].revents & POLLIN) && !global_exit) {
-            char buf[1024];
-            received = recv(socket_fds[1].fd, buf, 1023, 0);
-
-            if (received > 0) {
-                buf[received] = '\0';
-                lwlog_info("Got: '%s'", buf);
-                // close(client_fd);
-                // break;
-            }
-
-            if (errno == EAGAIN) {
-                errno = 0;
+        if (fds[0].revents & POLLIN) {
+            struct sockaddr_in client_addr;
+            socklen_t client_len = sizeof(client_addr);
+            int client_fd = accept(res.fd, (struct sockaddr*)&client_addr, &client_len);
+            if (client_fd < 0) {
+                if (errno != EAGAIN) {
+                    handle_error("accept failed");
+                    break;
+                }
                 continue;
             }
 
+            handle_client(client_fd);
             close(client_fd);
-        } else if (socket_fds[1].revents & POLLERR || socket_fds[1].revents & POLLHUP) {
-            lwlog_err("POLLERR / POLLHUP");
-            close(client_fd);
-            break;
         }
     }
 
     lwlog_info("Exiting TCP server");
-
     close(res.fd);
     return NULL;
+}
+
+void handle_client(int client_fd) {
+    char buf[1024];
+    ssize_t received = recv(client_fd, buf, sizeof(buf) - 1, 0);
+    if (received > 0) {
+        buf[received] = '\0';
+        lwlog_info("Received: %s", buf);
+
+        if (strcmp(buf, "getxskmapfd") == 0) {
+            lwlog_info("Sending xsk_map_fd: %d", xsk_map_fd);
+            char xsk_map_fd_str[10];
+            sprintf(xsk_map_fd_str, "%d", xsk_map_fd);
+            send(client_fd, xsk_map_fd_str, strlen(xsk_map_fd_str), 0);
+        } else {
+            lwlog_info("Unknown command: %s", buf);
+        }
+
+    } else if (received == 0) {
+        lwlog_info("Client disconnected");
+    } else {
+        handle_error("recv failed");
+    }
+}
+
+void handle_error(const char* msg) {
+    lwlog_err("%s: %s", msg, strerror(errno));
+    errno = 0;
 }

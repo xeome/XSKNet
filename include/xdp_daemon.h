@@ -9,3 +9,6 @@
 
 void exit_application(int sig);
 void* tcp_server_nonblocking();
+
+void handle_client(int client_fd);
+void handle_error(const char* msg);
