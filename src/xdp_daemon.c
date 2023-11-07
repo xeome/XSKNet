@@ -1,19 +1,18 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include <sys/resource.h>
 #include <pthread.h>
 
 #include <bpf/bpf.h>
-#include <xdp/libxdp.h>
 #include <xdp/xsk.h>
 
 #include "xdp_daemon.h"
 #include "xdp_load.h"
 #include "xdp_socket.h"
 #include "xdp_receive.h"
-#include "defs.h"
 #include "lwlog.h"
 #include "socket_stats.h"
 #include "socket99.h"
@@ -101,7 +100,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    /* Start statistics thread */
+    /* Start statistics thread (non-blocking) */
     pthread_t stats_poll_thread;
 
     struct poll_arg poll_arg = {
@@ -118,24 +117,29 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    socket99_config sock_cfg = {
-        .host = "127.0.0.1",
-        .port = 8080,
-        .server = true,
-        .nonblocking = true,
-    };
+    // bool res = tcp_server_nonblocking();
+    // if (!res) {
+    //     lwlog_err("Exiting TCP server");
+    // }
 
-    socket99_result res;  // result output in this struct
-    bool ok = socket99_open(&sock_cfg, &res);
-
-    if (!ok) {
-        lwlog_crit("ERROR: Can't create socket \"%s\"", strerror(errno));
+    /* Start socket (Polling and non-blocking) */
+    pthread_t socket_thread;
+    err = pthread_create(&socket_thread, NULL, tcp_server_nonblocking, NULL);
+    if (err) {
+        fprintf(stderr,
+                "ERROR: Failed creating socket thread "
+                "\"%s\"\n",
+                strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     /* Start receiving (Blocking)*/
     rx_and_process(&cfg, xsk_socket, &global_exit);
     lwlog_info("Exited from poll loop");
+
+    /* Wait for threads to finish */
+    pthread_join(stats_poll_thread, NULL);
+    pthread_join(socket_thread, NULL);
 
     /* Cleanup */
     xsk_socket__delete(xsk_socket->xsk);
@@ -155,6 +159,7 @@ void exit_application(int signal) {
     int err;
 
     cfg.unload_all = true;
+    global_exit = true;
     err = do_unload(&cfg);
     if (err) {
         lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
@@ -162,4 +167,98 @@ void exit_application(int signal) {
 
     lwlog_info("Exiting XDP Daemon");
     global_exit = true;
+}
+
+void* tcp_server_nonblocking() {
+    int v_true = 1;
+
+    socket99_config socket_cfg = {
+        .host = "127.0.0.1",
+        .port = 8080,
+        .server = true,
+        .nonblocking = true,
+
+    };
+
+    socket99_result res;
+    bool ok = socket99_open(&socket_cfg, &res);
+    if (!ok) {
+        char buf[128];
+        /* Example use of socket99_snprintf */
+        if (128 < socket99_snprintf(buf, 128, &res)) {
+            /* error message too long */
+            socket99_fprintf(stderr, &res);
+        } else {
+            fprintf(stderr, "%s\n", buf);
+        }
+        return false;
+    }
+
+    struct pollfd socket_fds[2];
+    socket_fds[0].fd = res.fd;
+    socket_fds[0].events = POLLIN;
+
+    ssize_t received = 0;
+    nfds_t poll_fds = 1;
+    int client_fd = -1;
+
+    while (!global_exit) {
+        int poll_res = poll(socket_fds, poll_fds, 1000 /* msec */);
+
+        if (poll_res <= 0)
+            continue;
+
+        if (socket_fds[0].revents & POLLIN && !global_exit) {
+            struct sockaddr address;
+            socklen_t addr_len;
+            client_fd = accept(res.fd, &address, &addr_len);
+
+            if (client_fd == -1) {
+                if (errno == EAGAIN) {
+                    errno = 0;
+                    continue;
+                } else {
+                    break;
+                }
+            } else {
+                socket_fds[1].fd = client_fd;
+                socket_fds[1].events = POLLIN;
+                poll_fds = 2;
+            }
+        } else if (socket_fds[0].revents & POLLERR || socket_fds[0].revents & POLLHUP) {
+            lwlog_err("POLLERR / POLLHUP");
+            break;
+        }
+
+        if (poll_fds <= 1)
+            continue;
+
+        if ((socket_fds[1].revents & POLLIN) && !global_exit) {
+            char buf[1024];
+            received = recv(socket_fds[1].fd, buf, 1023, 0);
+
+            if (received > 0) {
+                buf[received] = '\0';
+                lwlog_info("Got: '%s'", buf);
+                // close(client_fd);
+                // break;
+            }
+
+            if (errno == EAGAIN) {
+                errno = 0;
+                continue;
+            }
+
+            close(client_fd);
+        } else if (socket_fds[1].revents & POLLERR || socket_fds[1].revents & POLLHUP) {
+            lwlog_err("POLLERR / POLLHUP");
+            close(client_fd);
+            break;
+        }
+    }
+
+    lwlog_info("Exiting TCP server");
+
+    close(res.fd);
+    return NULL;
 }

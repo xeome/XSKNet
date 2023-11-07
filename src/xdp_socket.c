@@ -1,10 +1,8 @@
 #include <errno.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <unistd.h>
 
 #include <bpf/bpf.h>
-#include <xdp/libxdp.h>
 #include <xdp/xsk.h>
 
 #include "lwlog.h"

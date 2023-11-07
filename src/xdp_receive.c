@@ -3,12 +3,10 @@
 #include <assert.h>
 
 #include <bpf/bpf.h>
-#include <xdp/libxdp.h>
 #include <xdp/xsk.h>
 
 #include <arpa/inet.h>
 #include <net/if.h>
-#include <linux/if_link.h>
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
 #include <linux/icmpv6.h>
@@ -190,7 +188,6 @@ void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool
             if (ret <= 0 || ret > 1)
                 continue;
         }
-        lwlog_notice("Received packet");
         handle_receive_packets(xsk_socket);
     }
 }

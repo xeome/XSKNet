@@ -8,3 +8,4 @@
 #include "common_params.h"
 
 void exit_application(int sig);
+void* tcp_server_nonblocking();
