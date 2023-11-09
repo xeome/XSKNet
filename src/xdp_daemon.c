@@ -49,8 +49,6 @@ const struct option_wrapper long_options[] = {
 
     {{"queue", required_argument, NULL, 'Q'}, "Configure interface receive queue for AF_XDP, default=0"},
 
-    {{"poll-mode", no_argument, NULL, 'p'}, "Use the poll() API waiting for packets to arrive"},
-
     {{"quiet", no_argument, NULL, 'q'}, "Quiet mode (no output)"},
 
     {{"filename", required_argument, NULL, 1}, "Load program from <file>", "<file>"},
@@ -85,40 +83,6 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    // /* Allow unlimited locking of memory, so all memory needed for packet
-    //  * buffers can be locked.
-    //  */
-    // struct rlimit rlim = {RLIM_INFINITY, RLIM_INFINITY};
-    // if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
-    //     fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
-    //     exit(EXIT_FAILURE);
-    // }
-
-    // /* Create AF_XDP socket */
-    // struct xsk_socket_info* xsk_socket;
-    // xsk_socket = init_xsk_socket(&cfg, xsk_map_fd);
-    // if (xsk_socket == NULL) {
-    //     lwlog_crit("ERROR: Can't create xsk socket \"%s\"", strerror(errno));
-    //     exit(EXIT_FAILURE);
-    // }
-
-    // /* Start statistics thread (non-blocking) */
-    // pthread_t stats_poll_thread;
-
-    // struct poll_arg poll_arg = {
-    //     .xsk = xsk_socket,
-    //     .global_exit = &global_exit,
-    // };
-
-    // err = pthread_create(&stats_poll_thread, NULL, stats_poll, &poll_arg);
-    // if (err) {
-    //     fprintf(stderr,
-    //             "ERROR: Failed creating statistics thread "
-    //             "\"%s\"\n",
-    //             strerror(errno));
-    //     exit(EXIT_FAILURE);
-    // }
-
     /* Start socket (Polling and non-blocking) */
     pthread_t socket_thread;
     err = pthread_create(&socket_thread, NULL, tcp_server_nonblocking, NULL);
@@ -130,23 +94,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    /* Start receiving (Blocking)*/
-    // rx_and_process(&cfg, xsk_socket, &global_exit);
-    // lwlog_info("Exited from poll loop");
-
-    /* Wait for threads to finish */
-    // pthread_join(stats_poll_thread, NULL);
     pthread_join(socket_thread, NULL);
-
-    /* Cleanup */
-    // xsk_socket__delete(xsk_socket->xsk);
-    lwlog_info("XSK socket deleted");
-    // err = xsk_umem__delete(xsk_socket->umem->umem);
-    // if (err) {
-    //     lwlog_crit("ERROR: Can't destroy umem \"%s\"", strerror(errno));
-    //     exit(EXIT_FAILURE);
-    // }
-    // lwlog_info("UMEM destroyed");
 
     return 0;
 }
@@ -162,7 +110,6 @@ void exit_application(int signal) {
     }
 
     lwlog_info("Exiting XDP Daemon");
-    global_exit = true;
 }
 
 void* tcp_server_nonblocking() {
@@ -223,10 +170,8 @@ void handle_client(int client_fd) {
     ssize_t received = recv(client_fd, buf, sizeof(buf) - 1, 0);
     if (received > 0) {
         buf[received] = '\0';
-        lwlog_info("Received: %s", buf);
 
         if (strcmp(buf, "getxskmapfd") == 0) {
-            lwlog_info("Sending xsk_map_fd: %d", xsk_map_fd);
             char xsk_map_fd_str[10];
             sprintf(xsk_map_fd_str, "%d", xsk_map_fd);
             send(client_fd, xsk_map_fd_str, strlen(xsk_map_fd_str), 0);

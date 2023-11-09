@@ -11,6 +11,7 @@
 #include <linux/if_link.h> /* Need XDP flags */
 
 #include "common_defines.h"
+#include "lwlog.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -102,7 +103,7 @@ struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg) {
     if (err) {
         char errmsg[1024];
         libxdp_strerror(err, errmsg, sizeof(errmsg));
-        fprintf(stderr, "ERR: loading program: %s\n", errmsg);
+        lwlog_err("ERR: loading program: %s\n", errmsg);
         exit(EXIT_FAIL_BPF);
     }
 
@@ -122,7 +123,7 @@ struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg) {
 
     prog_fd = xdp_program__fd(prog);
     if (prog_fd < 0) {
-        fprintf(stderr, "ERR: xdp_program__fd failed: %s\n", strerror(errno));
+        lwlog_err("ERR: xdp_program__fd failed: %s\n", strerror(errno));
         exit(EXIT_FAIL_BPF);
     }
 
@@ -191,14 +192,15 @@ int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_i
 
     fd = bpf_obj_get(filename);
     if (fd < 0) {
-        fprintf(stderr, "WARN: Failed to open bpf map file:%s err(%d):%s\n", filename, errno, strerror(errno));
+        lwlog_err("WARN: Failed to open bpf map file:%s err(%d):%s\n", filename, errno, strerror(errno));
         return fd;
     }
 
     if (info) {
         err = bpf_obj_get_info_by_fd(fd, info, &info_len);
         if (err) {
-            fprintf(stderr, "ERR: %s() can't get info - %s\n", __func__, strerror(errno));
+            lwlog_err("ERR: %s() can't get info - %s\n", __func__, strerror(errno));
+
             return EXIT_FAIL_BPF;
         }
     }

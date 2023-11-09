@@ -62,10 +62,6 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
     xsk_cfg.bind_flags = cfg->xsk_bind_flags;
     xsk_cfg.libbpf_flags = XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD;
 
-    // Temporary hardcode
-    cfg->xsk_if_queue = 0;
-    cfg->ifname = "test";
-
     /* Create the AF_XDP socket */
     ret = xsk_socket__create(&xsk_info->xsk, cfg->ifname, cfg->xsk_if_queue, umem->umem, &xsk_info->rx, &xsk_info->tx, &xsk_cfg);
     if (ret) {

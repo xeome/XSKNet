@@ -25,15 +25,32 @@ static struct config cfg = {
     .unload_all = true,
 };
 
+static const char* __doc__ = "AF_XDP kernel bypass example, User App\n";
+
+const struct option_wrapper long_options[] = {
+
+    {{"help", no_argument, NULL, 'h'}, "Show help", false},
+
+    {{"dev", required_argument, NULL, 'd'}, "Operate on device <ifname>", "<ifname>", true},
+
+    {{"poll-mode", no_argument, NULL, 'p'}, "Use the poll() API waiting for packets to arrive"},
+
+    {{"quiet", no_argument, NULL, 'q'}, "Quiet mode (no output)"},
+
+    {{0, 0, NULL, 0}, NULL, false}};
+
+void sigint_handler(int signal) {
+    global_exit = true;
+    lwlog_info("Exiting XDP Daemon");
+}
+
 int main(int argc, char** argv) {
     int err;
+    /* Cmdline options can change progname */
+    parse_cmdline_args(argc, argv, long_options, &cfg, __doc__);
 
-    /* get xsk map fd from xdp daemon */
-    bool ret = get_map_fd();
-    if (!ret) {
-        lwlog_err("Failed to get map fd");
-        exit(EXIT_FAILURE);
-    }
+    signal(SIGINT, sigint_handler);
+    signal(SIGTERM, sigint_handler);
 
     /* Allow unlimited locking of memory, so all memory needed for packet
      * buffers can be locked.
