@@ -43,7 +43,7 @@ static uint64_t xsk_alloc_umem_frame(struct xsk_socket_info* xsk) {
     return frame;
 }
 
-static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct xsk_umem_info* umem, int xsk_map_fd) {
+static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct xsk_umem_info* umem) {
     struct xsk_socket_config xsk_cfg;
     struct xsk_socket_info* xsk_info;
     struct bpf_map_info info = {0};
@@ -79,7 +79,7 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
 
     /* Get xsk_map fd from pinned map */
 
-    xsk_map_fd = open_bpf_map_file(pin_dir, "xsks_map", &info);
+    int xsk_map_fd = open_bpf_map_file(pin_dir, "xsks_map", &info);
     if (xsk_map_fd < 0) {
         lwlog_crit("ERROR: Can't open xskmap \"%s\"", strerror(errno));
         goto error_exit;
@@ -118,7 +118,7 @@ error_exit:
     return NULL;
 }
 
-struct xsk_socket_info* init_xsk_socket(struct config* cfg, int xsk_map_fd) {
+struct xsk_socket_info* init_xsk_socket(struct config* cfg) {
     int ret;
     struct xsk_umem_info* umem;
     struct xsk_socket_info* xsk;
@@ -143,6 +143,6 @@ struct xsk_socket_info* init_xsk_socket(struct config* cfg, int xsk_map_fd) {
         exit(EXIT_FAILURE);
     }
 
-    xsk = xsk_configure_socket(cfg, umem, xsk_map_fd);
+    xsk = xsk_configure_socket(cfg, umem);
     return xsk;
 }

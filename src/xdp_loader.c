@@ -58,15 +58,13 @@ int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir) {
     return 0;
 }
 
-int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_fd) {
+int load_xdp_program(struct config* cfg, struct xdp_program* prog) {
     int err;
     char errmsg[1024];
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
     DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
 
     if (cfg->filename[0] != 0) {
-        struct bpf_map* map;
-
         xdp_opts.open_filename = cfg->filename;
         xdp_opts.prog_name = cfg->progname;
         xdp_opts.opts = &opts;
@@ -89,14 +87,6 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, int* xsk_map_
             libxdp_strerror(err, errmsg, sizeof(errmsg));
             lwlog_err("Couldn't attach XDP program on iface '%s' : %s (%d)", cfg->ifname, errmsg, err);
             return err;
-        }
-
-        /* We also need to load the xsks_map */
-        map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog), "xsks_map");
-        *xsk_map_fd = bpf_map__fd(map);
-        if (*xsk_map_fd < 0) {
-            lwlog_crit("ERROR: no xsks map found: %s", strerror(*xsk_map_fd));
-            exit(EXIT_FAIL);
         }
 
         /* Pin the maps */

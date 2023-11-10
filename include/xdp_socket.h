@@ -43,4 +43,4 @@ struct xsk_socket_info {
     struct stats_record prev_stats;
 };
 
-struct xsk_socket_info* init_xsk_socket(struct config* cfg, int xsk_map_fd);
+struct xsk_socket_info* init_xsk_socket(struct config* cfg);

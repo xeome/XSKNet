@@ -16,9 +16,8 @@
 #include "lwlog.h"
 #include "socket_stats.h"
 #include "socket99.h"
+#include "daemon_api.h"
 
-#define PORT 8080
-int xsk_map_fd;
 bool global_exit;
 struct xdp_program* prog;
 
@@ -77,7 +76,7 @@ int main(int argc, char** argv) {
     }
 
     /* Load XDP kernel program */
-    err = load_xdp_program(&cfg, prog, &xsk_map_fd);
+    err = load_xdp_program(&cfg, prog);
     if (err) {
         lwlog_crit("ERROR: loading program: %s\n", strerror(err));
         exit(1);
@@ -85,7 +84,7 @@ int main(int argc, char** argv) {
 
     /* Start socket (Polling and non-blocking) */
     pthread_t socket_thread;
-    err = pthread_create(&socket_thread, NULL, tcp_server_nonblocking, NULL);
+    err = pthread_create(&socket_thread, NULL, tcp_server_nonblocking, &global_exit);
     if (err) {
         fprintf(stderr,
                 "ERROR: Failed creating socket thread "
@@ -110,83 +109,4 @@ void exit_application(int signal) {
     }
 
     lwlog_info("Exiting XDP Daemon");
-}
-
-void* tcp_server_nonblocking() {
-    int v_true = 1;
-    socket99_config cfg = {
-        .host = "127.0.0.1",
-        .port = PORT,
-        .server = true,
-        .nonblocking = true,
-        .sockopts =
-            {
-                {SO_REUSEADDR, &v_true, sizeof(v_true)},
-            },
-
-    };
-
-    socket99_result res;
-    if (!socket99_open(&cfg, &res)) {
-        handle_error("socket99_open failed");
-        return NULL;
-    }
-
-    struct pollfd fds[2] = {{.fd = res.fd, .events = POLLIN}};
-
-    while (!global_exit) {
-        int nready = poll(fds, 1, 3000);
-        if (nready < 0) {
-            handle_error("poll failed");
-            break;
-        }
-        if (nready == 0)
-            continue;  // Timeout with no events
-
-        if (fds[0].revents & POLLIN) {
-            struct sockaddr_in client_addr;
-            socklen_t client_len = sizeof(client_addr);
-            int client_fd = accept(res.fd, (struct sockaddr*)&client_addr, &client_len);
-            if (client_fd < 0) {
-                if (errno != EAGAIN) {
-                    handle_error("accept failed");
-                    break;
-                }
-                continue;
-            }
-
-            handle_client(client_fd);
-            close(client_fd);
-        }
-    }
-
-    lwlog_info("Exiting TCP server");
-    close(res.fd);
-    return NULL;
-}
-
-void handle_client(int client_fd) {
-    char buf[1024];
-    ssize_t received = recv(client_fd, buf, sizeof(buf) - 1, 0);
-    if (received > 0) {
-        buf[received] = '\0';
-
-        if (strcmp(buf, "getxskmapfd") == 0) {
-            char xsk_map_fd_str[10];
-            sprintf(xsk_map_fd_str, "%d", xsk_map_fd);
-            send(client_fd, xsk_map_fd_str, strlen(xsk_map_fd_str), 0);
-        } else {
-            lwlog_info("Unknown command: %s", buf);
-        }
-
-    } else if (received == 0) {
-        lwlog_info("Client disconnected");
-    } else {
-        handle_error("recv failed");
-    }
-}
-
-void handle_error(const char* msg) {
-    lwlog_err("%s: %s", msg, strerror(errno));
-    errno = 0;
 }
