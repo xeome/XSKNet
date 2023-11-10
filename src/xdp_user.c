@@ -1,20 +1,13 @@
 #include <stdlib.h>
 #include <signal.h>
-#include <unistd.h>
-#include <poll.h>
 
-#include <bpf/bpf.h>
-#include <xdp/libxdp.h>
-#include <xdp/xsk.h>
 #include <sys/resource.h>
 #include <pthread.h>
 
 #include "xdp_socket.h"
 #include "socket_stats.h"
 #include "xdp_receive.h"
-#include "defs.h"
 #include "lwlog.h"
-#include "socket99.h"
 #include "xdp_user.h"
 #include "daemon_api.h"
 

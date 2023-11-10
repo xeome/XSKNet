@@ -1,8 +1,6 @@
 #pragma once
 
-#include <linux/types.h>
 #include <net/if.h>
-#include <stdbool.h>
 #include <xdp/libxdp.h>
 
 struct config {

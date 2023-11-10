@@ -1,13 +1,7 @@
 #include <stdlib.h>
-#include <errno.h>
 #include <unistd.h>
 
-#include <bpf/bpf.h>
-#include <xdp/libxdp.h>
-#include <xdp/xsk.h>
-
 #include "defs.h"
-#include "xdp_loader.h"
 #include "lwlog.h"
 
 #ifndef PATH_MAX

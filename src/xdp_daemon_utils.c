@@ -1,12 +1,7 @@
 #include <stdlib.h>
-#include <signal.h>
-#include <unistd.h>
-#include <poll.h>
-#include <stdbool.h>
 
 #include "daemon_api.h"
 #include "lwlog.h"
-#include "xdp_daemon_utils.h"
 
 char** veth_list;
 

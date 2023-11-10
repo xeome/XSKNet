@@ -4,7 +4,6 @@
  * the XDP socket.
  */
 #pragma once
-#include <stdio.h>
 #include "common_params.h"
 
 const struct option_wrapper long_options[] = {

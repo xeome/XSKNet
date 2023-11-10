@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <signal.h>
 #include <unistd.h>
 #include <poll.h>
 
@@ -55,7 +54,6 @@ char* send_to_daemon(char* msg) {
     }
 
     ssize_t sent = send(res.fd, msg, strlen(msg), 0);
-    lwlog_info("sent: %ld bytes", sent);
     if (sent == -1) {
         lwlog_err("send: %s", strerror(errno));
         close(res.fd);
@@ -71,7 +69,6 @@ char* send_to_daemon(char* msg) {
         return NULL;
     }
 
-    lwlog_info("received: %s", buffer);
     close(res.fd);
     return strdup(buffer);
 }

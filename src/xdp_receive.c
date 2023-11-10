@@ -1,17 +1,11 @@
 #include <poll.h>
-#include <stdbool.h>
 #include <assert.h>
 
-#include <bpf/bpf.h>
-#include <xdp/xsk.h>
-
 #include <arpa/inet.h>
-#include <net/if.h>
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
 #include <linux/icmpv6.h>
 
-#include "defs.h"
 #include "lwlog.h"
 #include "xdp_socket.h"
 

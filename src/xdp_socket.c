@@ -1,9 +1,5 @@
-#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
-
-#include <bpf/bpf.h>
-#include <xdp/xsk.h>
 
 #include "lwlog.h"
 #include "xdp_socket.h"
