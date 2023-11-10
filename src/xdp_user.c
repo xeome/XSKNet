@@ -47,7 +47,7 @@ void sigint_handler(int signal) {
 int main(int argc, char** argv) {
     int err;
     /* Cmdline options can change progname */
-    parse_cmdline_args(argc, argv, long_options, &cfg, __doc__);
+    parse_cmdline_args(argc, argv, long_options, &cfg, __doc__, true);
 
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigint_handler);

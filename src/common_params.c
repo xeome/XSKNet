@@ -11,6 +11,8 @@
 #include <linux/if_xdp.h>
 
 #include "common_params.h"
+#include "xdp_daemon_utils.h"
+#include "lwlog.h"
 
 int verbose = 1;
 
@@ -76,7 +78,8 @@ void parse_cmdline_args(int argc,
                         char** argv,
                         const struct option_wrapper* options_wrapper,
                         struct config* cfg,
-                        const char* doc) {
+                        const char* doc,
+                        bool user) {
     struct option* long_options;
     bool full_help = false;
     int longindex = 0;
@@ -98,6 +101,13 @@ void parse_cmdline_args(int argc,
                 }
                 cfg->ifname = (char*)&cfg->ifname_buf;
                 strncpy(cfg->ifname, optarg, IF_NAMESIZE);
+                /* Create the veth pair */
+                if (!user) {
+                    if (!create_veth(cfg->ifname)) {
+                        lwlog_warning("Couldn't create veth pair\n\n");
+                    }
+                }
+
                 cfg->ifindex = if_nametoindex(cfg->ifname);
                 if (cfg->ifindex == 0) {
                     fprintf(stderr, "ERR: --dev name unknown err(%d):%s\n", errno, strerror(errno));

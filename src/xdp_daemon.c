@@ -10,13 +10,14 @@
 #include <xdp/xsk.h>
 
 #include "xdp_daemon.h"
-#include "xdp_load.h"
+#include "xdp_loader.h"
 #include "xdp_socket.h"
 #include "xdp_receive.h"
 #include "lwlog.h"
 #include "socket_stats.h"
 #include "socket99.h"
 #include "daemon_api.h"
+#include "xdp_daemon_utils.h"
 
 bool global_exit;
 struct xdp_program* prog;
@@ -66,7 +67,7 @@ int main(int argc, char** argv) {
     lwlog_info("Starting XDP Daemon");
 
     /* Cmdline options can change progname */
-    parse_cmdline_args(argc, argv, long_options, &cfg, __doc__);
+    parse_cmdline_args(argc, argv, long_options, &cfg, __doc__, false);
 
     /* Required option */
     if (cfg.ifindex == -1) {
@@ -106,6 +107,12 @@ void exit_application(int signal) {
     err = do_unload(&cfg);
     if (err) {
         lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
+    }
+
+    /* Delete the veth pair */
+    lwlog_info("Deleting veth pair");
+    if (!delete_veth(cfg.ifname)) {
+        lwlog_err("Couldn't delete veth pair");
     }
 
     lwlog_info("Exiting XDP Daemon");

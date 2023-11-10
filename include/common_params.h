@@ -14,6 +14,11 @@ struct option_wrapper {
 
 void usage(const char* prog_name, const char* doc, const struct option_wrapper* long_options, bool full);
 
-void parse_cmdline_args(int argc, char** argv, const struct option_wrapper* long_options, struct config* cfg, const char* doc);
+void parse_cmdline_args(int argc,
+                        char** argv,
+                        const struct option_wrapper* long_options,
+                        struct config* cfg,
+                        const char* doc,
+                        bool user);
 
 #endif /* __COMMON_PARAMS_H */

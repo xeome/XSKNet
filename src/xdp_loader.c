@@ -7,7 +7,7 @@
 #include <xdp/xsk.h>
 
 #include "defs.h"
-#include "xdp_load.h"
+#include "xdp_loader.h"
 #include "lwlog.h"
 
 #ifndef PATH_MAX
