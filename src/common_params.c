@@ -102,17 +102,12 @@ void parse_cmdline_args(int argc,
                 cfg->ifname = (char*)&cfg->ifname_buf;
                 strncpy(cfg->ifname, optarg, IF_NAMESIZE);
                 /* Create the veth pair */
-                if (!user) {
-                    if (!create_veth(cfg->ifname)) {
-                        lwlog_warning("Couldn't create veth pair\n\n");
-                    }
-                }
 
                 cfg->ifindex = if_nametoindex(cfg->ifname);
-                if (cfg->ifindex == 0) {
-                    fprintf(stderr, "ERR: --dev name unknown err(%d):%s\n", errno, strerror(errno));
-                    goto error;
-                }
+                // if (cfg->ifindex == 0) {
+                //     fprintf(stderr, "ERR: --dev name unknown err(%d):%s\n", errno, strerror(errno));
+                //     goto error;
+                // }
                 break;
             case 'r':
                 if (strlen(optarg) >= IF_NAMESIZE) {

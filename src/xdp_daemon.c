@@ -57,6 +57,7 @@ const struct option_wrapper long_options[] = {
 
     {{0, 0, NULL, 0}, NULL, false}};
 
+pthread_t socket_thread;
 int main(int argc, char** argv) {
     int err;
     global_exit = false;
@@ -66,35 +67,28 @@ int main(int argc, char** argv) {
 
     lwlog_info("Starting XDP Daemon");
 
+    init_veth_list();
+
     /* Cmdline options can change progname */
     parse_cmdline_args(argc, argv, long_options, &cfg, __doc__, false);
 
-    /* Required option */
-    if (cfg.ifindex == -1) {
-        lwlog_crit("ERROR: Required option --dev missing\n\n");
-        usage(argv[0], __doc__, long_options, (argc == 1));
-        return EXIT_FAIL_OPTION;
-    }
-
-    /* Load XDP kernel program */
-    err = load_xdp_program(&cfg, prog);
-    if (err) {
-        lwlog_crit("ERROR: loading program: %s\n", strerror(err));
-        exit(1);
-    }
-
     /* Start socket (Polling and non-blocking) */
-    pthread_t socket_thread;
     err = pthread_create(&socket_thread, NULL, tcp_server_nonblocking, &global_exit);
     if (err) {
-        fprintf(stderr,
-                "ERROR: Failed creating socket thread "
-                "\"%s\"\n",
-                strerror(errno));
+        lwlog_crit("ERROR: Failed creating socket thread \"%s\"\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    pthread_join(socket_thread, NULL);
+    while (!global_exit) {
+        sleep(1);
+    }
+
+    /* Required option */
+    // if (cfg.ifindex == -1) {
+    //     lwlog_crit("ERROR: Required option --dev missing\n\n");
+    //     usage(argv[0], __doc__, long_options, (argc == 1));
+    //     return EXIT_FAIL_OPTION;
+    // }
 
     return 0;
 }
@@ -104,16 +98,43 @@ void exit_application(int signal) {
 
     cfg.unload_all = true;
     global_exit = true;
-    err = do_unload(&cfg);
-    if (err) {
-        lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
+    // err = do_unload(&cfg);
+    // if (err) {
+    //     lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
+    // }
+
+    // /* Delete the veth pair */
+    // lwlog_info("Deleting veth pair");
+    // if (!delete_veth(cfg.ifname)) {
+    //     lwlog_err("Couldn't delete veth pair");
+    // }
+
+    // Unload XDP programs from all interfaces in veth_list
+    int i = 0;
+    char** veth_list = get_veth_list();
+    while (veth_list[i] != NULL) {
+        lwlog_info("Unloading XDP program from %s", veth_list[i]);
+        cfg.ifindex = if_nametoindex(veth_list[i]);
+        if (cfg.ifindex == 0) {
+            lwlog_err("Couldn't get ifindex for %s", veth_list[i]);
+            return;
+        }
+
+        lwlog_info("Unloading XDP program");
+
+        // Use do_unload
+        err = do_unload(&cfg);
+        if (err) {
+            lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
+        }
+
+        if (!delete_veth(veth_list[i])) {
+            lwlog_err("Couldn't delete veth pair");
+        }
+
+        i++;
     }
 
-    /* Delete the veth pair */
-    lwlog_info("Deleting veth pair");
-    if (!delete_veth(cfg.ifname)) {
-        lwlog_err("Couldn't delete veth pair");
-    }
-
+    pthread_join(socket_thread, NULL);
     lwlog_info("Exiting XDP Daemon");
 }

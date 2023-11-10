@@ -16,6 +16,7 @@
 #include "lwlog.h"
 #include "socket99.h"
 #include "xdp_user.h"
+#include "daemon_api.h"
 
 int xsk_map_fd;
 static bool global_exit;
@@ -54,6 +55,14 @@ int main(int argc, char** argv) {
 
     lwlog_info("Starting XDP User client");
 
+    /* Request veth creation and XDP program loading from daemon */
+    char* msg = "create_port test";
+    char* res = send_to_daemon(msg);
+    if (res == NULL) {
+        lwlog_err("ERROR: Failed to send message to daemon");
+        exit(EXIT_FAILURE);
+    }
+
     /* Allow unlimited locking of memory, so all memory needed for packet
      * buffers can be locked.
      */
@@ -81,10 +90,7 @@ int main(int argc, char** argv) {
 
     err = pthread_create(&stats_poll_thread, NULL, stats_poll, &poll_arg);
     if (err) {
-        fprintf(stderr,
-                "ERROR: Failed creating statistics thread "
-                "\"%s\"\n",
-                strerror(errno));
+        lwlog_crit("ERROR: Failed creating stats thread \"%s\"\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 

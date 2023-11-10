@@ -6,8 +6,24 @@
 #include "daemon_api.h"
 #include "lwlog.h"
 #include "socket99.h"
+#include "defs.h"
+#include "xdp_loader.h"
+#include "xdp_daemon.h"
+#include "xdp_daemon_utils.h"
 
 #define PORT 8080
+
+typedef void (*CommandHandler)(void*);
+
+typedef struct {
+    char* command;
+    CommandHandler handler;
+} Command;
+
+Command commands[] = {
+    {"create_port", create_port},
+    {"delete_port", delete_port},
+};
 
 char* send_to_daemon(char* msg) {
     socket99_config socket_cfg = {
@@ -106,7 +122,7 @@ void* tcp_server_nonblocking(void* arg) {
                 continue;
             }
 
-            handle_client(client_fd);
+            handle_client(client_fd, global_exit);
             close(client_fd);
         }
     }
@@ -116,17 +132,111 @@ void* tcp_server_nonblocking(void* arg) {
     return NULL;
 }
 
-void handle_client(int client_fd) {
-    char buf[1024];
-    ssize_t received = recv(client_fd, buf, sizeof(buf) - 1, 0);
+void handle_client(int client_fd, bool* global_exit) {
+    if (global_exit != NULL && *global_exit) {
+        lwlog_info("Exiting TCP server");
+        return;
+    }
+
+    // Allocate to heap instead of stack
+    char* buf = malloc(1024);
+    if (buf == NULL) {
+        handle_error("malloc failed");
+        return;
+    }
+
+    ssize_t received = recv(client_fd, buf, 1024 - 1, 0);
     if (received > 0) {
         buf[received] = '\0';
         lwlog_info("Received: %s", buf);
+        // Before space is the command, after space is the argument
+        char* space = strchr(buf, ' ');
+        if (space != NULL) {
+            *space = '\0';
+            char* arg = space + 1;
+            if (*arg == '\0') {
+                arg = NULL;
+            }
+            handlecmd(buf, arg);
+        } else {
+            handlecmd(buf, NULL);
+        }
     } else if (received == 0) {
         lwlog_info("Client disconnected");
     } else {
         handle_error("recv failed");
     }
+}
+
+void create_port(void* arg) {
+    char* veth_name = arg;
+    lwlog_info("Creating veth pair: %s", veth_name);
+    if (!create_veth(veth_name)) {
+        lwlog_err("Couldn't create veth pair");
+    }
+
+    // Load XDP program
+    struct config cfg = {
+        .ifindex = -1,
+        .unload_all = true,
+    };
+
+    cfg.ifindex = if_nametoindex(veth_name);
+    if (cfg.ifindex == 0) {
+        lwlog_err("Couldn't get ifindex for %s", veth_name);
+        return;
+    }
+
+    lwlog_info("Loading XDP program");
+    if (load_xdp_program(&cfg, NULL) != 0) {
+        lwlog_err("Couldn't load XDP program");
+    }
+
+    add_to_veth_list(veth_name);
+}
+
+void delete_port(void* arg) {
+    char* veth_name = arg;
+    lwlog_info("Deleting veth pair: %s", veth_name);
+    if (!delete_veth(veth_name)) {
+        lwlog_err("Couldn't delete veth pair");
+    }
+
+    // Unload XDP program
+    struct config cfg = {
+        .ifindex = -1,
+        .unload_all = true,
+    };
+
+    cfg.ifindex = if_nametoindex(veth_name);
+    if (cfg.ifindex == 0) {
+        lwlog_err("Couldn't get ifindex for %s", veth_name);
+        return;
+    }
+
+    lwlog_info("Unloading XDP program");
+    // Use do_unload
+    if (do_unload(&cfg) != 0) {
+        lwlog_err("Couldn't unload XDP program");
+    }
+
+    int ret = remove_from_veth_list(veth_name);
+    if (ret == -1) {
+        lwlog_err("Couldn't remove %s from veth list", veth_name);
+    }
+}
+
+int handlecmd(char* cmd, void* arg) {
+    lwlog_info("Received command: %s", cmd);
+    for (int i = 0; i < sizeof(commands) / sizeof(Command); i++) {
+        if (strcmp(cmd, commands[i].command) == 0) {
+            commands[i].handler(arg);
+            return 0;
+        }
+    }
+
+    lwlog_err("Unknown command: %s", cmd);
+    return -1;
 }
 
 static inline void handle_error(const char* msg) {
