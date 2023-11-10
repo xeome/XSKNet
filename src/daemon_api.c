@@ -179,6 +179,8 @@ void create_port(void* arg) {
     struct config cfg = {
         .ifindex = -1,
         .unload_all = true,
+        .filename = "obj/xdp_kern_obj.o",
+        .ifname = veth_name,
     };
 
     cfg.ifindex = if_nametoindex(veth_name);

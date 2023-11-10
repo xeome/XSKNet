@@ -357,7 +357,8 @@ run_ping() {
 		fi
 	fi
 
-	ns_exec "$PING" "$IP" "$@" # -l 5000 -c 5000 -i 0.001
+	ns_exec "$PING" "$IP" "$@" -i 0 -l 20000 -S 2000 -s 1450 -q
+	# ns_exec /usr/bin/hping3 -1 --flood "$IP"
 }
 
 run_tcpdump() {
