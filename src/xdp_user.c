@@ -56,12 +56,7 @@ int main(int argc, char** argv) {
     lwlog_info("Starting XDP User client");
 
     /* Request veth creation and XDP program loading from daemon */
-    char* msg = "create_port test";
-    char* res = send_to_daemon(msg);
-    if (res == NULL) {
-        lwlog_err("ERROR: Failed to send message to daemon");
-        exit(EXIT_FAILURE);
-    }
+    request_port();
 
     /* Allow unlimited locking of memory, so all memory needed for packet
      * buffers can be locked.
@@ -112,5 +107,39 @@ int main(int argc, char** argv) {
     }
     lwlog_info("UMEM destroyed");
 
+    /* Request veth deletion and XDP program unloading from daemon */
+    request_port_deletion();
+
+    lwlog_info("Exiting XDP User client");
     return 0;
+}
+
+void request_port() {
+    char msg[1024];
+    int ret = snprintf(msg, sizeof(msg), "create_port %s", cfg.ifname);
+    if (ret < 0 || ret >= sizeof(msg)) {
+        lwlog_err("ERROR: Failed to format message");
+        exit(EXIT_FAILURE);
+    }
+
+    char* response = send_to_daemon(msg);
+    if (response == NULL) {
+        lwlog_err("ERROR: Failed to send message to daemon");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void request_port_deletion() {
+    char msg[1024];
+    int ret = snprintf(msg, sizeof(msg), "delete_port %s", cfg.ifname);
+    if (ret < 0 || ret >= sizeof(msg)) {
+        lwlog_err("ERROR: Failed to format message");
+        exit(EXIT_FAILURE);
+    }
+
+    char* response = send_to_daemon(msg);
+    if (response == NULL) {
+        lwlog_err("ERROR: Failed to send message to daemon");
+        exit(EXIT_FAILURE);
+    }
 }

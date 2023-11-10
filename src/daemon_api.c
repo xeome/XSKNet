@@ -8,7 +8,6 @@
 #include "socket99.h"
 #include "defs.h"
 #include "xdp_loader.h"
-#include "xdp_daemon.h"
 #include "xdp_daemon_utils.h"
 
 #define PORT 8080
@@ -47,34 +46,34 @@ char* send_to_daemon(char* msg) {
         return NULL;
     }
 
-    if (fd.revents & POLLOUT) {
-        ssize_t sent = send(res.fd, msg, strlen(msg), 0);
-        lwlog_info("sent: %ld bytes", sent);
-        if (sent == -1) {
-            lwlog_err("send: %s", strerror(errno));
-            close(res.fd);
-            return NULL;
+    if (!(fd.revents & POLLOUT)) {
+        if (fd.revents & (POLLERR | POLLHUP)) {
+            lwlog_err("poll: POLLERR or POLLHUP");
         }
-
-        fd.events = POLLIN;
-        char buffer[1024] = {0};
-        ssize_t valread = recv(res.fd, buffer, sizeof(buffer) - 1, 0);
-        if (valread == -1) {
-            lwlog_err("recv: %s", strerror(errno));
-            close(res.fd);
-            return NULL;
-        }
-
-        lwlog_info("received: %s", buffer);
-        return strdup(buffer);
-    } else if (fd.revents & (POLLERR | POLLHUP)) {
-        lwlog_err("poll: POLLERR or POLLHUP");
         close(res.fd);
         return NULL;
     }
 
+    ssize_t sent = send(res.fd, msg, strlen(msg), 0);
+    lwlog_info("sent: %ld bytes", sent);
+    if (sent == -1) {
+        lwlog_err("send: %s", strerror(errno));
+        close(res.fd);
+        return NULL;
+    }
+
+    fd.events = POLLIN;
+    char buffer[1024] = {0};
+    ssize_t valread = recv(res.fd, buffer, sizeof(buffer) - 1, 0);
+    if (valread == -1) {
+        lwlog_err("recv: %s", strerror(errno));
+        close(res.fd);
+        return NULL;
+    }
+
+    lwlog_info("received: %s", buffer);
     close(res.fd);
-    return NULL;
+    return strdup(buffer);
 }
 
 void* tcp_server_nonblocking(void* arg) {
@@ -133,12 +132,11 @@ void* tcp_server_nonblocking(void* arg) {
 }
 
 void handle_client(int client_fd, bool* global_exit) {
-    if (global_exit != NULL && *global_exit) {
+    if (global_exit == NULL || *global_exit) {
         lwlog_info("Exiting TCP server");
         return;
     }
 
-    // Allocate to heap instead of stack
     char* buf = malloc(1024);
     if (buf == NULL) {
         handle_error("malloc failed");
@@ -146,26 +144,31 @@ void handle_client(int client_fd, bool* global_exit) {
     }
 
     ssize_t received = recv(client_fd, buf, 1024 - 1, 0);
-    if (received > 0) {
-        buf[received] = '\0';
-        lwlog_info("Received: %s", buf);
-        // Before space is the command, after space is the argument
-        char* space = strchr(buf, ' ');
-        if (space != NULL) {
-            *space = '\0';
-            char* arg = space + 1;
-            if (*arg == '\0') {
-                arg = NULL;
-            }
-            handlecmd(buf, arg);
+    if (received <= 0) {
+        if (received == 0) {
+            lwlog_info("Client disconnected");
         } else {
-            handlecmd(buf, NULL);
+            handle_error("recv failed");
         }
-    } else if (received == 0) {
-        lwlog_info("Client disconnected");
-    } else {
-        handle_error("recv failed");
+        free(buf);
+        return;
     }
+
+    buf[received] = '\0';
+    char* space = strchr(buf, ' ');
+    if (space == NULL) {
+        handlecmd(buf, NULL);
+        free(buf);
+        return;
+    }
+
+    *space = '\0';
+    char* arg = space + 1;
+    if (*arg == '\0') {
+        arg = NULL;
+    }
+    handlecmd(buf, arg);
+    free(buf);
 }
 
 void create_port(void* arg) {
@@ -199,15 +202,11 @@ void create_port(void* arg) {
 
 void delete_port(void* arg) {
     char* veth_name = arg;
-    lwlog_info("Deleting veth pair: %s", veth_name);
-    if (!delete_veth(veth_name)) {
-        lwlog_err("Couldn't delete veth pair");
-    }
-
-    // Unload XDP program
     struct config cfg = {
         .ifindex = -1,
         .unload_all = true,
+        .filename = "obj/xdp_kern_obj.o",
+        .ifname = veth_name,
     };
 
     cfg.ifindex = if_nametoindex(veth_name);
@@ -217,9 +216,13 @@ void delete_port(void* arg) {
     }
 
     lwlog_info("Unloading XDP program");
-    // Use do_unload
     if (do_unload(&cfg) != 0) {
         lwlog_err("Couldn't unload XDP program");
+    }
+
+    lwlog_info("Deleting veth pair: %s", veth_name);
+    if (!delete_veth(veth_name)) {
+        lwlog_err("Couldn't delete veth pair");
     }
 
     int ret = remove_from_veth_list(veth_name);

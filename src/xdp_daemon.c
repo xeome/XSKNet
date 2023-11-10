@@ -29,34 +29,6 @@ static struct config cfg = {
 
 static const char* __doc__ = "AF_XDP kernel bypass example\n";
 
-const struct option_wrapper long_options[] = {
-
-    {{"help", no_argument, NULL, 'h'}, "Show help", false},
-
-    {{"dev", required_argument, NULL, 'd'}, "Operate on device <ifname>", "<ifname>", true},
-
-    {{"skb-mode", no_argument, NULL, 'S'}, "Install XDP program in SKB (AKA generic) mode"},
-
-    {{"native-mode", no_argument, NULL, 'N'}, "Install XDP program in native mode"},
-
-    {{"auto-mode", no_argument, NULL, 'A'}, "Auto-detect SKB or native mode"},
-
-    {{"force", no_argument, NULL, 'F'}, "Force install, replacing existing program on interface"},
-
-    {{"copy", no_argument, NULL, 'c'}, "Force copy mode"},
-
-    {{"zero-copy", no_argument, NULL, 'z'}, "Force zero-copy mode"},
-
-    {{"queue", required_argument, NULL, 'Q'}, "Configure interface receive queue for AF_XDP, default=0"},
-
-    {{"quiet", no_argument, NULL, 'q'}, "Quiet mode (no output)"},
-
-    {{"filename", required_argument, NULL, 1}, "Load program from <file>", "<file>"},
-
-    {{"progname", required_argument, NULL, 2}, "Load program from function <name> in the ELF file", "<name>"},
-
-    {{0, 0, NULL, 0}, NULL, false}};
-
 pthread_t socket_thread;
 int main(int argc, char** argv) {
     int err;
@@ -83,13 +55,6 @@ int main(int argc, char** argv) {
         sleep(1);
     }
 
-    /* Required option */
-    // if (cfg.ifindex == -1) {
-    //     lwlog_crit("ERROR: Required option --dev missing\n\n");
-    //     usage(argv[0], __doc__, long_options, (argc == 1));
-    //     return EXIT_FAIL_OPTION;
-    // }
-
     return 0;
 }
 
@@ -98,18 +63,7 @@ void exit_application(int signal) {
 
     cfg.unload_all = true;
     global_exit = true;
-    // err = do_unload(&cfg);
-    // if (err) {
-    //     lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
-    // }
 
-    // /* Delete the veth pair */
-    // lwlog_info("Deleting veth pair");
-    // if (!delete_veth(cfg.ifname)) {
-    //     lwlog_err("Couldn't delete veth pair");
-    // }
-
-    // Unload XDP programs from all interfaces in veth_list
     int i = 0;
     char** veth_list = get_veth_list();
     while (veth_list[i] != NULL) {
