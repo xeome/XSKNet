@@ -98,6 +98,7 @@ void* tcp_server_nonblocking(void* arg) {
     struct pollfd fds[2] = {{.fd = res.fd, .events = POLLIN}};
 
     while (!*global_exit) {
+        // Wait for incoming connections
         int nready = poll(fds, 1, 3000);
         if (nready < 0) {
             handle_error("poll failed");
@@ -107,6 +108,7 @@ void* tcp_server_nonblocking(void* arg) {
             continue;  // Timeout with no events
 
         if (fds[0].revents & POLLIN) {
+            // Accept new connection
             struct sockaddr_in client_addr;
             socklen_t client_len = sizeof(client_addr);
             int client_fd = accept(res.fd, (struct sockaddr*)&client_addr, &client_len);
@@ -154,21 +156,28 @@ void handle_client(int client_fd, bool* global_exit) {
     buf[received] = '\0';
     char* space = strchr(buf, ' ');
     if (space == NULL) {
-        handlecmd(buf, NULL);
+        // If no space is found, treat the entire data as a command with no argument
+        handle_cmd(buf, NULL);
         free(buf);
         return;
     }
 
+    // Replace the space with a null character to separate command and argument
     *space = '\0';
     char* arg = space + 1;
     if (*arg == '\0') {
         arg = NULL;
     }
-    handlecmd(buf, arg);
+    handle_cmd(buf, arg);
     free(buf);
 }
 
 void create_port(void* arg) {
+    if (arg == NULL) {
+        lwlog_err("create_port: arg is NULL");
+        return;
+    }
+
     char* veth_name = arg;
     lwlog_info("Creating veth pair: %s", veth_name);
     if (!create_veth(veth_name)) {
@@ -179,7 +188,7 @@ void create_port(void* arg) {
     struct config cfg = {
         .ifindex = -1,
         .unload_all = true,
-        .filename = "obj/xdp_kern_obj.o",
+        .filename = "obj/af_xdp.o",
         .ifname = veth_name,
     };
 
@@ -198,11 +207,16 @@ void create_port(void* arg) {
 }
 
 void delete_port(void* arg) {
+    if (arg == NULL) {
+        lwlog_err("delete_port: arg is NULL");
+        return;
+    }
+
     char* veth_name = arg;
     struct config cfg = {
         .ifindex = -1,
         .unload_all = true,
-        .filename = "obj/xdp_kern_obj.o",
+        .filename = "obj/af_xdp.o",
         .ifname = veth_name,
     };
 
@@ -228,7 +242,7 @@ void delete_port(void* arg) {
     }
 }
 
-int handlecmd(char* cmd, void* arg) {
+int handle_cmd(char* cmd, void* arg) {
     lwlog_info("Received command: %s", cmd);
     for (int i = 0; i < sizeof(commands) / sizeof(Command); i++) {
         if (strcmp(cmd, commands[i].command) == 0) {

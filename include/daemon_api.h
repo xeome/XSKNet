@@ -11,4 +11,4 @@ void handle_client(int client_fd, bool* global_exit);
 void create_port(void* arg);
 void delete_port(void* arg);
 
-int handlecmd(char* cmd, void* arg);
+int handle_cmd(char* cmd, void* arg);
