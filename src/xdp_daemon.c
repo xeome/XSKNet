@@ -11,7 +11,7 @@
 #include "xdp_daemon_utils.h"
 
 bool global_exit;
-struct xdp_program* prog;
+// struct xdp_program* prog;
 
 static struct config cfg = {
     .ifindex = -1,

@@ -75,3 +75,6 @@ config.mk
 .vscode/*
 bin/*
 obj/*
+
+zig-cache/
+zig-out/
