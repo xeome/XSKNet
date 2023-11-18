@@ -10,6 +10,7 @@
 #include "lwlog.h"
 #include "xdp_user.h"
 #include "daemon_api.h"
+#include <linux/if.h>
 
 int xsk_map_fd;
 static bool global_exit;
@@ -60,6 +61,16 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
+    char* veth_peer_name = malloc(sizeof(char) * IFNAMSIZ);
+    if (veth_peer_name == NULL) {
+        lwlog_err("ERROR: Couldn't allocate memory for veth peer name");
+        exit(EXIT_FAILURE);
+    }
+    snprintf(veth_peer_name, IFNAMSIZ, "%s_peer", cfg.ifname);
+    char* ifname_orig = strdup(cfg.ifname);
+    cfg.ifindex = if_nametoindex(veth_peer_name);
+    cfg.ifname = veth_peer_name;
+
     /* Create AF_XDP socket */
     struct xsk_socket_info* xsk_socket;
     xsk_socket = init_xsk_socket(&cfg);
@@ -100,6 +111,7 @@ int main(int argc, char** argv) {
     }
     lwlog_info("UMEM destroyed");
 
+    cfg.ifname = ifname_orig;
     /* Request veth deletion and XDP program unloading from daemon */
     request_port_deletion();
 

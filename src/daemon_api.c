@@ -9,6 +9,7 @@
 #include "xdp_loader.h"
 #include "xdp_daemon_utils.h"
 #include "common_user_bpf_xdp.h"
+#include <linux/if.h>
 
 #define PORT 8080
 
@@ -192,17 +193,22 @@ void create_port(void* arg) {
         lwlog_err("Couldn't create veth pair");
     }
 
+    char veth_name_peer[IFNAMSIZ];
+    snprintf(veth_name_peer, IFNAMSIZ, "%s_peer", veth_name);
+
     // Load XDP program
     struct config cfg = {
         .ifindex = -1,
         .unload_all = true,
         .filename = "obj/af_xdp.o",
-        .ifname = veth_name,
+        .ifname = veth_name_peer,
     };
 
-    cfg.ifindex = if_nametoindex(veth_name);
+    int non_peer_ifindex = if_nametoindex(veth_name);
+
+    cfg.ifindex = if_nametoindex(veth_name_peer);
     if (cfg.ifindex == 0) {
-        lwlog_err("Couldn't get ifindex for %s", veth_name);
+        lwlog_err("Couldn't get ifindex for %s", veth_name_peer);
         return;
     }
 
@@ -211,7 +217,7 @@ void create_port(void* arg) {
         lwlog_err("Couldn't load XDP program");
     }
 
-    int ret = update_devmap(cfg.ifindex);
+    int ret = update_devmap(non_peer_ifindex);
     if (ret == -1) {
         lwlog_err("Couldn't update devmap");
     }
@@ -226,11 +232,14 @@ void delete_port(void* arg) {
     }
 
     char* veth_name = arg;
+
+    char veth_name_peer[IFNAMSIZ];
+    snprintf(veth_name_peer, IFNAMSIZ, "%s_peer", veth_name);
     struct config cfg = {
         .ifindex = -1,
         .unload_all = true,
         .filename = "obj/af_xdp.o",
-        .ifname = veth_name,
+        .ifname = veth_name_peer,
     };
 
     cfg.ifindex = if_nametoindex(veth_name);
