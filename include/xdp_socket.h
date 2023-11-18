@@ -8,7 +8,7 @@
 
 #include <xdp/xsk.h>
 
-#include "defs.h"
+#include "common_defines.h"
 
 #define NUM_FRAMES 4096
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE

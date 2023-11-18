@@ -22,6 +22,8 @@ SEC("xdp")
 int xdp_sock_prog(struct xdp_md* ctx) {
     int index = ctx->rx_queue_index;
 
+    bpf_printk("xdp_sock_prog: index=%d\n", index);
+
     /* A set entry here means that the correspnding queue_id
      * has an active AF_XDP socket bound to it. */
     if (bpf_map_lookup_elem(&xsks_map, &index))

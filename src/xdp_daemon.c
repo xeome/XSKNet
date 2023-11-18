@@ -35,6 +35,16 @@ int main(int argc, char** argv) {
     /* Cmdline options can change progname */
     parse_cmdline_args(argc, argv, long_options, &cfg, __doc__, false);
 
+    /* Load XDP program */
+    if (load_xdp_program(&cfg, prog, "xdp_devmap") != 0) {
+        lwlog_err("Couldn't load XDP program");
+    }
+
+    err = add_to_veth_list(cfg.ifname);
+    if (err) {
+        lwlog_err("Couldn't add veth to list");
+    }
+
     /* Start socket (Polling and non-blocking) */
     err = pthread_create(&socket_thread, NULL, tcp_server_nonblocking, &global_exit);
     if (err) {

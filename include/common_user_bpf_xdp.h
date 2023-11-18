@@ -1,6 +1,7 @@
 /* Common BPF/XDP functions used by userspace side programs */
 #ifndef __COMMON_USER_BPF_XDP_H
 #define __COMMON_USER_BPF_XDP_H
+#include "common_defines.h"
 
 struct bpf_object* load_bpf_object_file(const char* filename, int ifindex);
 struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg);

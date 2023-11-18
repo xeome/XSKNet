@@ -4,6 +4,7 @@
  */
 
 #pragma once
+#include "common_defines.h"
 
-int load_xdp_program(struct config* cfg, struct xdp_program* prog);
+int load_xdp_program(struct config* cfg, struct xdp_program* prog, char* map_name);
 int do_unload(struct config* cfg);

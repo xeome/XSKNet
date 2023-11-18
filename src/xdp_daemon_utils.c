@@ -3,40 +3,44 @@
 #include "daemon_api.h"
 #include "lwlog.h"
 
+#define VETH_NUM 100
+
 char** veth_list;
 
 int init_veth_list() {
-    veth_list = malloc(sizeof(char*) * 100);
-    for (int i = 0; i < 100; i++) {
+    veth_list = malloc(sizeof(char*) * VETH_NUM);
+    for (int i = 0; i < VETH_NUM; i++) {
         veth_list[i] = NULL;
     }
     return 0;
 }
 
 int add_to_veth_list(char* veth_name) {
-    int i = 0;
-    while (veth_list[i] != NULL) {
-        i++;
+    for (int i = 0; i < VETH_NUM; i++) {
+        if (veth_list[i] == NULL) {
+            veth_list[i] = strdup(veth_name);
+            lwlog_info("Added %s to veth list", veth_list[i]);
+            return 0;
+        }
     }
-    veth_list[i] = veth_name;
-    return i;
+    return -1;  // List is full
 }
 
 int remove_from_veth_list(char* veth_name) {
-    int i = 0;
-    while (veth_list[i] != NULL) {
-        if (strcmp(veth_list[i], veth_name) == 0) {
+    for (int i = 0; i < VETH_NUM; i++) {
+        if (veth_list[i] != NULL && strcmp(veth_list[i], veth_name) == 0) {
+            free(veth_list[i]);
             veth_list[i] = NULL;
-            return i;
+            return 0;
         }
-        i++;
     }
-    return -1;
+    return -1;  // Name not found
 }
 
 bool create_veth(char* veth_name) {
     char cmd[1024];
-    sprintf(cmd, "./testenv/testenv.sh setup --name=%s", veth_name);
+    sprintf(cmd, "./testenv/create_veth.sh %s %s1", veth_name, veth_name);
+    lwlog_info("Running command: %s", cmd);
     int err = system(cmd);
     if (err) {
         lwlog_err("Couldn't create veth pair: (%d)", err);
@@ -47,7 +51,7 @@ bool create_veth(char* veth_name) {
 
 bool delete_veth(char* veth_name) {
     char cmd[1024];
-    sprintf(cmd, "./testenv/testenv.sh teardown --name=%s", veth_name);
+    sprintf(cmd, "./testenv/delete_veth.sh %s", veth_name);
     int err = system(cmd);
     if (err) {
         lwlog_err("Couldn't delete veth pair: (%d)", err);

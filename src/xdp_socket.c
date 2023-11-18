@@ -4,12 +4,12 @@
 #include "lwlog.h"
 #include "xdp_socket.h"
 #include "common_user_bpf_xdp.h"
+#include "common_defines.h"
+#include "defs.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
-
-static const char* pin_basedir = "/sys/fs/bpf";
 
 static struct xsk_umem_info* configure_xsk_umem(void* buffer, uint64_t size) {
     struct xsk_umem_info* umem;

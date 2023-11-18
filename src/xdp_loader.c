@@ -3,16 +3,14 @@
 
 #include "defs.h"
 #include "lwlog.h"
+#include "common_defines.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
 
-static const char* pin_basedir = "/sys/fs/bpf";
-const char* map_name = "xsks_map";
-
 /* Pinning maps under /sys/fs/bpf in subdir */
-int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir) {
+int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir, char* map_name) {
     char map_filename[PATH_MAX];
     char pin_dir[PATH_MAX];
     int err, len;
@@ -52,7 +50,7 @@ int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir) {
     return 0;
 }
 
-int load_xdp_program(struct config* cfg, struct xdp_program* prog) {
+int load_xdp_program(struct config* cfg, struct xdp_program* prog, char* map_name) {
     int err;
     char errmsg[1024];
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
@@ -76,6 +74,7 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog) {
             return err;
         }
 
+        lwlog_info("Loading XDP program from %s to ifindex %d and ifname %s", cfg->filename, cfg->ifindex, cfg->ifname);
         err = xdp_program__attach(prog, cfg->ifindex, cfg->attach_mode, 0);
         if (err) {
             libxdp_strerror(err, errmsg, sizeof(errmsg));
@@ -84,7 +83,7 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog) {
         }
 
         /* Pin the maps */
-        err = pin_maps_in_bpf_object(xdp_program__bpf_obj(prog), cfg->ifname);
+        err = pin_maps_in_bpf_object(xdp_program__bpf_obj(prog), cfg->ifname, map_name);
         if (err) {
             lwlog_err("ERR: pinning maps in %s", cfg->ifname);
             return err;

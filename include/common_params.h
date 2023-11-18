@@ -4,6 +4,7 @@
 
 #include <getopt.h>
 #include "defs.h"
+#include "common_defines.h"
 
 struct option_wrapper {
     struct option option;

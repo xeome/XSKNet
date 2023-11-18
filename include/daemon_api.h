@@ -12,3 +12,5 @@ void create_port(void* arg);
 void delete_port(void* arg);
 
 int handle_cmd(char* cmd, void* arg);
+
+int update_devmap(int ifindex);

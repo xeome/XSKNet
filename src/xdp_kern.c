@@ -34,6 +34,14 @@ struct {
     __uint(max_entries, 64);
 } xdp_stats_map SEC(".maps");
 
+// devmap
+struct {
+    __uint(type, BPF_MAP_TYPE_DEVMAP);
+    __uint(key_size, sizeof(int));
+    __uint(value_size, sizeof(int));
+    __uint(max_entries, 64);
+} xdp_devmap SEC(".maps");
+
 static __always_inline int parse_ethhdr(struct ethhdr* eth, void* data_end, struct pkt_meta* pkt_meta) {
     void* data = (void*)(eth + 1);
 
@@ -48,24 +56,20 @@ static __always_inline int parse_ethhdr(struct ethhdr* eth, void* data_end, stru
 
 SEC("xdp_redir")
 int xdp_redirect(struct xdp_md* ctx) {
-    // For now redirect packets to veth1 and veth2, round robin style
-    __u32 *pkt_count, key = 0;
-    pkt_count = bpf_map_lookup_elem(&xdp_stats_map, &key);
-    __u16 base_ifindex = 10;  // Last regular interface I have on my machine, rest will be virtual
+    __u32 port = 0;
 
-    if (pkt_count) {
-        if ((*pkt_count)++ & 1) {
-            bpf_printk("redirecting to veth1\n");
-            return bpf_redirect(base_ifindex + 1, 0);
-        } else {
-            bpf_printk("redirecting to veth2\n");
-            return bpf_redirect(base_ifindex + 2, 0);
-        }
-    } else {
-        bpf_printk("pkt_count is null\n");
+    int* ifindex = bpf_map_lookup_elem(&xdp_devmap, &port);
+
+    if (!ifindex) {
         return XDP_DROP;
     }
 
-    return XDP_DROP;
+    bpf_printk("xdp_redirect: port=%d\n", port);
+    return bpf_redirect(*ifindex, 0);
+
+    // if (bpf_map_lookup_elem(&xdp_devmap, &port)) {
+    //     bpf_printk("xdp_redirect: port=%d\n", port);
+    //     return bpf_redirect_map(&xdp_devmap, port, 0);
+    // }
 }
 char _license[] SEC("license") = "GPL";

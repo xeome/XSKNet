@@ -225,7 +225,7 @@ setup() {
 	CLEANUP_FUNC=cleanup_setup
 
 	if ! mount | grep -q /sys/fs/bpf; then
-		mount -t bpf bpf /sys/fs/bpf/
+		mount --make-shared -t bpf bpf /sys/fs/bpf/
 	fi
 
 	ip netns add "$NS"
@@ -251,16 +251,18 @@ setup() {
 	# namespaces
 	ip -n "$NS" route add "${IP6_SUBNET}::/$IP6_FULL_PREFIX_SIZE" via "$OUTSIDE_IP6" dev veth0
 
-	if [ "$LEGACY_IP" -eq "1" ]; then
-		ip addr add dev "$NS" "${OUTSIDE_IP4}/${IP4_PREFIX_SIZE}"
-		ip -n "$NS" addr add dev veth0 "${INSIDE_IP4}/${IP4_PREFIX_SIZE}"
-		ip neigh add "$INSIDE_IP4" lladdr "$INSIDE_MAC" dev "$NS" nud permanent
-		ip -n "$NS" neigh add "$OUTSIDE_IP4" lladdr "$OUTSIDE_MAC" dev veth0 nud permanent
-		ip -n "$NS" route add "${IP4_SUBNET}/${IP4_FULL_PREFIX_SIZE}" via "$OUTSIDE_IP4" dev veth0
-		ENABLE_IPV4=1
-	else
-		ENABLE_IPV4=0
-	fi
+	iptables -A FORWARD -i "$NS" -o veth0 -j ACCEPT
+	iptables -A FORWARD -i veth0 -o "$NS" -j ACCEPT
+
+	ip addr add dev "$NS" "${OUTSIDE_IP4}/${IP4_PREFIX_SIZE}"
+	ip -n "$NS" addr add dev veth0 "${INSIDE_IP4}/${IP4_PREFIX_SIZE}"
+	ip neigh add "$INSIDE_IP4" lladdr "$INSIDE_MAC" dev "$NS" nud permanent
+	ip -n "$NS" neigh add "$OUTSIDE_IP4" lladdr "$OUTSIDE_MAC" dev veth0 nud permanent
+	#ip -n "$NS" route add "${IP4_SUBNET}/${IP4_FULL_PREFIX_SIZE}" via "$OUTSIDE_IP4" dev veth0
+	ip -n "$NS" route add default via "$OUTSIDE_IP4" dev veth0
+	ENABLE_IPV4=1
+	echo "${IP4_PREFIX}0/${IP4_PREFIX_SIZE}"
+	iptables -t nat -A POSTROUTING -s "${IP4_PREFIX}0/${IP4_PREFIX_SIZE}" -o "$NS" -j MASQUERADE
 
 	if [ "$USE_VLAN" -eq "1" ]; then
 		ENABLE_VLAN=1
@@ -357,7 +359,7 @@ run_ping() {
 		fi
 	fi
 
-	ns_exec "$PING" "$IP" "$@" -i 0 -l 20000 -S 2000 -s 1450 -q
+	ns_exec "$PING" "$IP" "$@" -i 0 -l 2000 -S 2000 -s 1450 -q
 	# ns_exec /usr/bin/hping3 -1 --flood "$IP"
 }
 

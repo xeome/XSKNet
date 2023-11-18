@@ -8,8 +8,13 @@
 #include "defs.h"
 #include "xdp_loader.h"
 #include "xdp_daemon_utils.h"
+#include "common_user_bpf_xdp.h"
 
 #define PORT 8080
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
 typedef void (*CommandHandler)(void*);
 
@@ -29,6 +34,7 @@ char* send_to_daemon(char* msg) {
         .port = 8080,
     };
 
+    lwlog_info("Connecting to %s:%d", socket_cfg.host, socket_cfg.port);
     socket99_result res;
     if (!socket99_open(&socket_cfg, &res)) {
         socket99_fprintf(stderr, &res);
@@ -78,7 +84,7 @@ void* tcp_server_nonblocking(void* arg) {
 
     int v_true = 1;
     socket99_config cfg = {
-        .host = "127.0.0.1",
+        .host = "0.0.0.0",
         .port = PORT,
         .server = true,
         .nonblocking = true,
@@ -154,6 +160,8 @@ void handle_client(int client_fd, bool* global_exit) {
     }
 
     buf[received] = '\0';
+    lwlog_info("Received %ld bytes: %s", received, buf);
+
     char* space = strchr(buf, ' ');
     if (space == NULL) {
         // If no space is found, treat the entire data as a command with no argument
@@ -199,8 +207,13 @@ void create_port(void* arg) {
     }
 
     lwlog_info("Loading XDP program");
-    if (load_xdp_program(&cfg, NULL) != 0) {
+    if (load_xdp_program(&cfg, NULL, "xsks_map") != 0) {
         lwlog_err("Couldn't load XDP program");
+    }
+
+    int ret = update_devmap(cfg.ifindex);
+    if (ret == -1) {
+        lwlog_err("Couldn't update devmap");
     }
 
     add_to_veth_list(veth_name);
@@ -258,4 +271,39 @@ int handle_cmd(char* cmd, void* arg) {
 static inline void handle_error(const char* msg) {
     lwlog_err("%s: %s", msg, strerror(errno));
     errno = 0;
+}
+
+int update_devmap(int ifindex) {
+    char pin_dir[PATH_MAX];
+    struct bpf_map_info info = {0};
+
+    // get ifname from ifindex
+    char ifname[IF_NAMESIZE];
+    if (if_indextoname(ifindex, ifname) == NULL) {
+        lwlog_err("Couldn't get ifname from ifindex %d", ifindex);
+        return -1;
+    }
+
+    int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, "wlan0");
+    if (len < 0 || len >= PATH_MAX) {
+        lwlog_err("Couldn't format pin_dir");
+        return -1;
+    }
+
+    int map_fd = open_bpf_map_file(pin_dir, "xdp_devmap", &info);
+    if (map_fd < 0) {
+        lwlog_err("Couldn't open xdp_devmap");
+        return -1;
+    }
+
+    int key = 0;
+    int ret = bpf_map_update_elem(map_fd, &key, &ifindex, BPF_ANY);
+
+    if (ret) {
+        lwlog_err("Couldn't update devmap");
+        return -1;
+    }
+
+    lwlog_info("Redirecting packets to %s on ifindex %d", ifname, ifindex);
+    return 0;
 }
