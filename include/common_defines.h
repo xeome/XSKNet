@@ -1,10 +1,10 @@
 #ifndef __COMMON_DEFINES_H
 #define __COMMON_DEFINES_H
 
-#include <net/if.h>
 #include <linux/types.h>
 #include <stdbool.h>
 #include <xdp/libxdp.h>
+#define IF_NAMESIZE 16
 
 struct config {
     enum xdp_attach_mode attach_mode;

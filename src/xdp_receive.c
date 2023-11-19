@@ -2,9 +2,9 @@
 #include <assert.h>
 
 #include <arpa/inet.h>
+#include <linux/icmp.h>
 #include <linux/if_ether.h>
-#include <linux/ipv6.h>
-#include <linux/icmpv6.h>
+#include <linux/ip.h>
 
 #include "lwlog.h"
 #include "xdp_socket.h"
@@ -61,35 +61,62 @@ static inline __sum16 csum16_sub(__sum16 csum, __be16 addend) {
     return csum16_add(csum, ~addend);
 }
 
-static inline void csum_replace2(__sum16* sum, __be16 old, __be16 new) {
-    *sum = ~csum16_add(csum16_sub(~(*sum), old), new);
+// static inline void csum_replace2(__sum16* sum, __be16 old, __be16 new) {
+//     *sum = ~csum16_add(csum16_sub(~(*sum), old), new);
+// }
+static inline void csum_replace2(uint16_t* sum, uint16_t old, uint16_t new) {
+    uint16_t csum = ~*sum;  // 1's complement of the checksum (flip all the bits)
+
+    csum += ~old;                   // Subtract the old value from the checksum
+    csum += csum < (uint16_t)~old;  // If the subtraction overflowed, add 1 to the checksum
+
+    csum += new;                    // Add the new value to the checksum
+    csum += csum < (uint16_t) new;  // If the addition overflowed, add 1 to the checksum
+
+    *sum = ~csum;  // 1's complement of the checksum
 }
 
+// ipv4 instead
 static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len) {
     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
+    errno = 0;
     int ret;
     uint32_t tx_idx = 0;
     uint8_t tmp_mac[ETH_ALEN];
-    struct in6_addr tmp_ip;
+    struct in_addr tmp_ip;
     struct ethhdr* eth = (struct ethhdr*)pkt;
-    struct ipv6hdr* ipv6 = (struct ipv6hdr*)(eth + 1);
-    struct icmp6hdr* icmp = (struct icmp6hdr*)(ipv6 + 1);
+    struct iphdr* ipv4 = (struct iphdr*)(eth + 1);
+    struct icmphdr* icmp = (struct icmphdr*)(ipv4 + 1);
 
-    if (ntohs(eth->h_proto) != ETH_P_IPV6) {
-        lwlog_warning("Received non-IPv6 packet");
+    // if (len < (sizeof(*eth) + sizeof(*ipv4) + sizeof(*icmp))) {
+    //     lwlog_warning("Received too small packet");
+    //     return false;
+    // }
+
+    if (len < sizeof(*eth)) {
         return false;
     }
-    if (len < (sizeof(*eth) + sizeof(*ipv6) + sizeof(*icmp))) {
-        lwlog_warning("Received too small packet");
+
+    if (len < sizeof(*ipv4)) {
         return false;
     }
-    if (ipv6->nexthdr != IPPROTO_ICMPV6) {
-        lwlog_warning("Received non-ICMPv6 packet");
+
+    if (len < sizeof(*icmp)) {
         return false;
     }
-    if (icmp->icmp6_type != ICMPV6_ECHO_REQUEST) {
-        lwlog_warning("Received non-ICMPv6 echo request");
+
+    if (ntohs(eth->h_proto) != ETH_P_IP) {
+        lwlog_warning("Received non-IPv4 packet");
+        return false;
+    }
+
+    if (ipv4->protocol != IPPROTO_ICMP) {
+        lwlog_warning("Received non-ICMPv4 packet");
+        return false;
+    }
+    if (icmp->type != ICMP_ECHO) {
+        lwlog_warning("Received non-ICMPv4 echo request");
         return false;
     }
 
@@ -97,13 +124,13 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
     memcpy(eth->h_source, tmp_mac, ETH_ALEN);
 
-    memcpy(&tmp_ip, &ipv6->saddr, sizeof(tmp_ip));
-    memcpy(&ipv6->saddr, &ipv6->daddr, sizeof(tmp_ip));
-    memcpy(&ipv6->daddr, &tmp_ip, sizeof(tmp_ip));
+    memcpy(&tmp_ip, &ipv4->saddr, sizeof(tmp_ip));
+    memcpy(&ipv4->saddr, &ipv4->daddr, sizeof(tmp_ip));
+    memcpy(&ipv4->daddr, &tmp_ip, sizeof(tmp_ip));
 
-    icmp->icmp6_type = ICMPV6_ECHO_REPLY;
+    icmp->type = ICMP_ECHOREPLY;
 
-    csum_replace2(&icmp->icmp6_cksum, htons(ICMPV6_ECHO_REQUEST << 8), htons(ICMPV6_ECHO_REPLY << 8));
+    csum_replace2(&icmp->checksum, htons(ICMP_ECHO << 8), htons(ICMP_ECHOREPLY << 8));
 
     /* Here we sent the packet out of the receive port. Note that
      * we allocate one entry and schedule it. Your design would be
@@ -124,6 +151,66 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     xsk->stats.tx_packets++;
     return true;
 }
+
+// static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len) {
+//     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
+
+//     int ret;
+//     uint32_t tx_idx = 0;
+//     uint8_t tmp_mac[ETH_ALEN];
+//     struct in6_addr tmp_ip;
+//     struct ethhdr* eth = (struct ethhdr*)pkt;
+//     struct ipv6hdr* ipv6 = (struct ipv6hdr*)(eth + 1);
+//     struct icmp6hdr* icmp = (struct icmp6hdr*)(ipv6 + 1);
+
+//     if (ntohs(eth->h_proto) != ETH_P_IPV6) {
+//         lwlog_warning("Received non-IPv6 packet");
+//         return false;
+//     }
+//     if (len < (sizeof(*eth) + sizeof(*ipv6) + sizeof(*icmp))) {
+//         lwlog_warning("Received too small packet");
+//         return false;
+//     }
+//     if (ipv6->nexthdr != IPPROTO_ICMPV6) {
+//         lwlog_warning("Received non-ICMPv6 packet");
+//         return false;
+//     }
+//     if (icmp->icmp6_type != ICMPV6_ECHO_REQUEST) {
+//         lwlog_warning("Received non-ICMPv6 echo request");
+//         return false;
+//     }
+
+//     memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
+//     memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+//     memcpy(eth->h_source, tmp_mac, ETH_ALEN);
+
+//     memcpy(&tmp_ip, &ipv6->saddr, sizeof(tmp_ip));
+//     memcpy(&ipv6->saddr, &ipv6->daddr, sizeof(tmp_ip));
+//     memcpy(&ipv6->daddr, &tmp_ip, sizeof(tmp_ip));
+
+//     icmp->icmp6_type = ICMPV6_ECHO_REPLY;
+
+//     csum_replace2(&icmp->icmp6_cksum, htons(ICMPV6_ECHO_REQUEST << 8), htons(ICMPV6_ECHO_REPLY << 8));
+
+//     /* Here we sent the packet out of the receive port. Note that
+//      * we allocate one entry and schedule it. Your design would be
+//      * faster if you do batch processing/transmission */
+//     ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
+//     if (ret != 1) {
+//         /* No more transmit slots, drop the packet */
+//         lwlog_warning("Dropping packet due to lack of transmit slots");
+//         return false;
+//     }
+
+//     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
+//     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
+//     xsk_ring_prod__submit(&xsk->tx, 1);
+//     xsk->outstanding_tx++;
+
+//     xsk->stats.tx_bytes += len;
+//     xsk->stats.tx_packets++;
+//     return true;
+// }
 
 static void handle_receive_packets(struct xsk_socket_info* xsk) {
     unsigned int rcvd, stock_frames, i;

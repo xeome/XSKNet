@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <signal.h>
 
+#include <net/if.h>
 #include <sys/resource.h>
 #include <pthread.h>
 
@@ -10,9 +11,7 @@
 #include "lwlog.h"
 #include "xdp_user.h"
 #include "daemon_api.h"
-#include <linux/if.h>
 
-int xsk_map_fd;
 static bool global_exit;
 
 static struct config cfg = {
@@ -23,15 +22,10 @@ static struct config cfg = {
 static const char* __doc__ = "AF_XDP kernel bypass example, User App\n";
 
 const struct option_wrapper long_options[] = {
-
     {{"help", no_argument, NULL, 'h'}, "Show help", false},
-
     {{"dev", required_argument, NULL, 'd'}, "Operate on device <ifname>", "<ifname>", true},
-
     {{"poll-mode", no_argument, NULL, 'p'}, "Use the poll() API waiting for packets to arrive"},
-
     {{"quiet", no_argument, NULL, 'q'}, "Quiet mode (no output)"},
-
     {{0, 0, NULL, 0}, NULL, false}};
 
 void sigint_handler(int signal) {

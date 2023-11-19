@@ -1,3 +1,5 @@
+#include <net/if.h>
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <poll.h>
@@ -9,7 +11,6 @@
 #include "xdp_loader.h"
 #include "xdp_daemon_utils.h"
 #include "common_user_bpf_xdp.h"
-#include <linux/if.h>
 
 #define PORT 8080
 

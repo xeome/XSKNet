@@ -1,3 +1,5 @@
+#include <net/if.h>
+
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
@@ -12,7 +14,7 @@
 
 bool global_exit;
 struct xdp_program* prog;
-
+pthread_t socket_thread;
 static struct config cfg = {
     .ifindex = -1,
     .unload_all = true,
@@ -20,7 +22,6 @@ static struct config cfg = {
 
 static const char* __doc__ = "AF_XDP kernel bypass example\n";
 
-pthread_t socket_thread;
 int main(int argc, char** argv) {
     int err;
     global_exit = false;
@@ -59,35 +60,36 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-void exit_application(int signal) {
-    int err;
+void unload_xdp_program(const char* ifname) {
+    lwlog_info("Unloading XDP program from %s", ifname);
 
+    cfg.ifindex = if_nametoindex(ifname);
+    if (cfg.ifindex == 0) {
+        lwlog_err("Couldn't get ifindex for %s", ifname);
+        return;
+    }
+
+    lwlog_info("Unloading XDP program");
+
+    int err = do_unload(&cfg);
+    if (err) {
+        lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
+    }
+
+    if (!delete_veth(ifname)) {
+        lwlog_err("Couldn't delete veth pair");
+    }
+}
+
+void exit_application(int signal) {
     cfg.unload_all = true;
     global_exit = true;
 
-    int i = 0;
     char** veth_list = get_veth_list();
-    while (veth_list[i] != NULL) {
-        lwlog_info("Unloading XDP program from %s", veth_list[i]);
-        cfg.ifindex = if_nametoindex(veth_list[i]);
-        if (cfg.ifindex == 0) {
-            lwlog_err("Couldn't get ifindex for %s", veth_list[i]);
-            return;
+    for (int i = 0; i < VETH_NUM; i++) {
+        if (veth_list[i] != NULL) {
+            unload_xdp_program(veth_list[i]);
         }
-
-        lwlog_info("Unloading XDP program");
-
-        // Use do_unload
-        err = do_unload(&cfg);
-        if (err) {
-            lwlog_err("Couldn't detach XDP program on iface '%s' : (%d)", cfg.ifname, err);
-        }
-
-        if (!delete_veth(veth_list[i])) {
-            lwlog_err("Couldn't delete veth pair");
-        }
-
-        i++;
     }
 
     pthread_join(socket_thread, NULL);

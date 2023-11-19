@@ -1,8 +1,5 @@
 #pragma once
 
-#include <net/if.h>
-#include <xdp/libxdp.h>
-
 static const char* pin_basedir = "/sys/fs/bpf";
 /* Defined in common_params.o */
 extern int verbose;

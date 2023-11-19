@@ -1,9 +1,7 @@
 #include <stdlib.h>
 
-#include "daemon_api.h"
+#include "xdp_daemon_utils.h"
 #include "lwlog.h"
-
-#define VETH_NUM 100
 
 char** veth_list;
 

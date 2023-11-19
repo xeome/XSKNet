@@ -1,5 +1,8 @@
 #pragma once
 
+#define VETH_NUM 100
+#include <stdbool.h>
+
 bool create_veth(char* veth_name);
 bool delete_veth(char* veth_name);
 int add_to_veth_list(char* veth_name);

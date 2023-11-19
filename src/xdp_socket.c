@@ -4,7 +4,6 @@
 #include "lwlog.h"
 #include "xdp_socket.h"
 #include "common_user_bpf_xdp.h"
-#include "common_defines.h"
 #include "defs.h"
 
 #ifndef PATH_MAX
