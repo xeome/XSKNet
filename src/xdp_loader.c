@@ -100,7 +100,6 @@ int do_unload(struct config* cfg) {
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
 
     mp = xdp_multiprog__get_from_ifindex(cfg->ifindex);
-    lwlog_info("Getting XDP program from ifname %s and ifindex %d", cfg->ifname, cfg->ifindex);
     if (libxdp_get_error(mp)) {
         lwlog_warning("Unable to get xdp_dispatcher program");
         goto out;
