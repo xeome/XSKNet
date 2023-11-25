@@ -4,13 +4,9 @@
 #include <unistd.h>
 #include <poll.h>
 
-#include "daemon_api.h"
-#include "lwlog.h"
+#include "libxsk.h"
 #include "socket99.h"
-#include "defs.h"
-#include "xdp_loader.h"
-#include "xdp_daemon_utils.h"
-#include "common_user_bpf_xdp.h"
+#include "lwlog.h"
 
 #define PORT 8080
 

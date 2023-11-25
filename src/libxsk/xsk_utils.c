@@ -1,10 +1,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "libxsk.h"
 #include "lwlog.h"
-#include "xdp_socket.h"
-#include "common_user_bpf_xdp.h"
-#include "defs.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096

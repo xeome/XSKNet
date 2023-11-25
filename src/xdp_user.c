@@ -5,12 +5,8 @@
 #include <sys/resource.h>
 #include <pthread.h>
 
-#include "xdp_socket.h"
-#include "socket_stats.h"
-#include "xdp_receive.h"
+#include "libxsk.h"
 #include "lwlog.h"
-#include "xdp_user.h"
-#include "daemon_api.h"
 
 static bool global_exit;
 
@@ -28,6 +24,8 @@ const struct option_wrapper long_options[] = {
     {{"quiet", no_argument, NULL, 'q'}, "Quiet mode (no output)"},
     {{0, 0, NULL, 0}, NULL, false}};
 
+void request_port();
+void request_port_deletion();
 void sigint_handler(int signal) {
     global_exit = true;
     lwlog_info("Exiting XDP Daemon");

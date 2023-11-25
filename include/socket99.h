@@ -1,4 +1,4 @@
-#ifndef SOCKET99_H
+// LWLOG_H_#ifndef SOCKET99_H
 #define SOCKET99_H
 
 #define SOCKET99_VERSION_MAJOR 0
@@ -102,5 +102,3 @@ void socket99_fprintf(FILE* f, socket99_result* res);
 
 /* Set "hints" in an addrinfo struct, to be passed to getaddrinfo. */
 void socket99_set_hints(socket99_config* cfg, struct addrinfo* hints);
-
-#endif

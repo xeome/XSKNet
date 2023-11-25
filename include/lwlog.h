@@ -216,4 +216,4 @@
 
 #endif
 
-#endif  // LWLOG_H_
+#endif

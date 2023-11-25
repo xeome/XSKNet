@@ -6,8 +6,8 @@
 #include <linux/if_ether.h>
 #include <linux/ip.h>
 
+#include "libxsk.h"
 #include "lwlog.h"
-#include "xdp_socket.h"
 
 static uint64_t xsk_alloc_umem_frame(struct xsk_socket_info* xsk) {
     uint64_t frame;

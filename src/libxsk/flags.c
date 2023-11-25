@@ -10,9 +10,7 @@
 #include <linux/if_link.h> /* XDP_FLAGS_* depend on kernel-headers installed */
 #include <linux/if_xdp.h>
 
-#include "common_params.h"
-#include "xdp_daemon_utils.h"
-#include "lwlog.h"
+#include "libxsk.h"
 
 int verbose = 1;
 

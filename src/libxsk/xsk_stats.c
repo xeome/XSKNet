@@ -4,8 +4,7 @@
 #include <locale.h>
 #include <unistd.h>
 
-#include "xdp_socket.h"
-#include "socket_stats.h"
+#include "libxsk.h"
 #include "lwlog.h"
 
 #define NANOSEC_PER_SEC 1000000000 /* 10^9 */

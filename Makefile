@@ -1,7 +1,7 @@
 OBJ_PATH := obj
 SRC_PATH := src
 BIN_PATH := bin
-INC_PATH := include
+INC_PATH := include 
 XDP_KERNEL_SRC_PATH := $(SRC_PATH)/kern
 
 # Exclude main files from the list of source files

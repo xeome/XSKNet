@@ -1,6 +1,6 @@
 #include <stdlib.h>
 
-#include "xdp_daemon_utils.h"
+#include "libxsk.h"
 #include "lwlog.h"
 
 char** veth_list;
