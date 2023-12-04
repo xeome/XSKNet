@@ -6,44 +6,9 @@
 #include <xdp/xsk.h>
 #include <getopt.h>
 #include <stdbool.h>
+
 #include "config.h"
 
-/* Defined in common_params.o */
-extern int verbose;
-
-/* Exit return codes */
-#define EXIT_OK 0   /* == EXIT_SUCCESS (stdlib.h) man exit(3) */
-#define EXIT_FAIL 1 /* == EXIT_FAILURE (stdlib.h) man exit(3) */
-#define EXIT_FAIL_OPTION 2
-#define EXIT_FAIL_XDP 30
-#define EXIT_FAIL_BPF 40
-
-/* This common_user.h is used by userspace programs */
-
-struct bpf_object* load_bpf_object_file(const char* filename, int ifindex);
-struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg);
-
-const char* action2str(__u32 action);
-
-int check_map_fd_info(const struct bpf_map_info* info, const struct bpf_map_info* exp);
-
-int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_info* info);
-
-void* tcp_server_nonblocking(void* arg);
-char* send_to_daemon(char* msg);
-
-static inline void handle_error(const char* msg);
-void handle_client(int client_fd, bool* global_exit);
-
-void create_port(void* arg);
-void delete_port(void* arg);
-
-int handle_cmd(char* cmd, void* arg);
-
-int update_devmap(int ifindex);
-
-static const char* pin_basedir = "/sys/fs/bpf";
-/* Defined in common_params.o */
 extern int verbose;
 
 /* Exit return codes */
@@ -54,6 +19,28 @@ extern int verbose;
 #define EXIT_FAIL_XDP 30
 #define EXIT_FAIL_BPF 40
 
+static const char* pin_basedir = "/sys/fs/bpf";
+#define VETH_NUM 100
+
+// xdp utils
+struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg);
+struct bpf_object* load_bpf_object_file(const char* filename, int ifindex);
+const char* action2str(__u32 action);
+int check_map_fd_info(const struct bpf_map_info* info, const struct bpf_map_info* exp);
+int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_info* info);
+int load_xdp_program(struct config* cfg, struct xdp_program* prog, char* map_name);
+
+// api commands
+void* tcp_server_nonblocking(void* arg);
+char* send_to_daemon(char* msg);
+static inline void handle_error(const char* msg);
+void handle_client(int client_fd, bool* global_exit);
+void create_port(void* arg);
+void delete_port(void* arg);
+int handle_cmd(char* cmd, void* arg);
+int update_devmap(int ifindex);
+int do_unload(struct config* cfg);
+
 struct poll_arg {
     struct xsk_socket_info* xsk;
     volatile bool* global_exit;
@@ -61,8 +48,7 @@ struct poll_arg {
 
 void* stats_poll(void* arg);
 
-#define VETH_NUM 100
-
+// veth utils
 bool create_veth(const char* veth_name);
 bool delete_veth(const char* veth_name);
 int add_to_veth_list(char* veth_name);
@@ -70,8 +56,6 @@ int remove_from_veth_list(char* veth_name);
 char** get_veth_list();
 int init_veth_list();
 
-int load_xdp_program(struct config* cfg, struct xdp_program* prog, char* map_name);
-int do_unload(struct config* cfg);
 void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool* global_exit);
 
 #define NUM_FRAMES 4096
