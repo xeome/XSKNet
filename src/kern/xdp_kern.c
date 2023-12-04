@@ -42,17 +42,17 @@ struct {
     __uint(max_entries, 64);
 } xdp_devmap SEC(".maps");
 
-static __always_inline int parse_ethhdr(struct ethhdr* eth, void* data_end, struct pkt_meta* pkt_meta) {
-    void* data = (void*)(eth + 1);
+// static __always_inline int parse_ethhdr(struct ethhdr* eth, void* data_end, struct pkt_meta* pkt_meta) {
+//     void* data = (void*)(eth + 1);
 
-    if (data + sizeof(struct pkt_meta) > data_end) {
-        return 0;
-    }
+//     if (data + sizeof(struct pkt_meta) > data_end) {
+//         return 0;
+//     }
 
-    memcpy(pkt_meta, data, sizeof(struct pkt_meta));
+//     memcpy(pkt_meta, data, sizeof(struct pkt_meta));
 
-    return 1;
-}
+//     return 1;
+// }
 
 SEC("xdp_redir")
 int xdp_redirect(struct xdp_md* ctx) {

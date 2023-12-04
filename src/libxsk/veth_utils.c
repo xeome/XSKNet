@@ -35,7 +35,7 @@ int remove_from_veth_list(char* veth_name) {
     return -1;  // Name not found
 }
 
-bool create_veth(char* veth_name) {
+bool create_veth(const char* veth_name) {
     char cmd[1024];
     sprintf(cmd, "./testenv/create_veth.sh %s %s_peer", veth_name, veth_name);
     lwlog_info("Running command: %s", cmd);
@@ -47,7 +47,7 @@ bool create_veth(char* veth_name) {
     return true;
 }
 
-bool delete_veth(char* veth_name) {
+bool delete_veth(const char* veth_name) {
     if (strcmp(veth_name, "lo") == 0) {
         lwlog_err("Can't delete loopback interface");
         return false;

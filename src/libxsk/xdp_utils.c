@@ -19,38 +19,38 @@
 #define PATH_MAX 4096
 #endif
 
-static int reuse_maps(struct bpf_object* obj, const char* path) {
-    struct bpf_map* map;
+// static int reuse_maps(struct bpf_object* obj, const char* path) {
+//     struct bpf_map* map;
 
-    if (!obj)
-        return -ENOENT;
+//     if (!obj)
+//         return -ENOENT;
 
-    if (!path)
-        return -EINVAL;
+//     if (!path)
+//         return -EINVAL;
 
-    bpf_object__for_each_map(map, obj) {
-        int len, err;
-        int pinned_map_fd;
-        char buf[PATH_MAX];
+//     bpf_object__for_each_map(map, obj) {
+//         int len, err;
+//         int pinned_map_fd;
+//         char buf[PATH_MAX];
 
-        len = snprintf(buf, PATH_MAX, "%s/%s", path, bpf_map__name(map));
-        if (len < 0) {
-            return -EINVAL;
-        } else if (len >= PATH_MAX) {
-            return -ENAMETOOLONG;
-        }
+//         len = snprintf(buf, PATH_MAX, "%s/%s", path, bpf_map__name(map));
+//         if (len < 0) {
+//             return -EINVAL;
+//         } else if (len >= PATH_MAX) {
+//             return -ENAMETOOLONG;
+//         }
 
-        pinned_map_fd = bpf_obj_get(buf);
-        if (pinned_map_fd < 0)
-            return pinned_map_fd;
+//         pinned_map_fd = bpf_obj_get(buf);
+//         if (pinned_map_fd < 0)
+//             return pinned_map_fd;
 
-        err = bpf_map__reuse_fd(map, pinned_map_fd);
-        if (err)
-            return err;
-    }
+//         err = bpf_map__reuse_fd(map, pinned_map_fd);
+//         if (err)
+//             return err;
+//     }
 
-    return 0;
-}
+//     return 0;
+// }
 
 #if 0
 struct bpf_object *load_bpf_object_file_reuse_maps(const char *file,

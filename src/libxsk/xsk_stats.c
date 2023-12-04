@@ -7,6 +7,7 @@
 #include "libxsk.h"
 #include "lwlog.h"
 
+#define CLOCK_MONOTONIC 1
 #define NANOSEC_PER_SEC 1000000000 /* 10^9 */
 static uint64_t gettime(void) {
     struct timespec t;

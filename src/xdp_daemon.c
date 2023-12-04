@@ -8,6 +8,7 @@
 
 #include "libxsk.h"
 #include "lwlog.h"
+#include "flags.h"
 
 bool global_exit;
 struct xdp_program* prog;

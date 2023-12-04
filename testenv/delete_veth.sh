@@ -1,1 +1,3 @@
-ip li del $1
+#!/bin/bash
+
+ip li del "$1"

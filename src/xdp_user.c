@@ -7,6 +7,7 @@
 
 #include "libxsk.h"
 #include "lwlog.h"
+#include "flags.h"
 
 static bool global_exit;
 

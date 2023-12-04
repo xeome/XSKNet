@@ -11,6 +11,7 @@
 #include <linux/if_xdp.h>
 
 #include "libxsk.h"
+#include "flags.h"
 
 int verbose = 1;
 

@@ -1,5 +1,4 @@
-// LWLOG_H_#ifndef SOCKET99_H
-#define SOCKET99_H
+#pragma once
 
 #define SOCKET99_VERSION_MAJOR 0
 #define SOCKET99_VERSION_MINOR 2
@@ -8,6 +7,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <netdb.h>
+#include <stdio.h>
 
 /* Max number of socket options to allow in the config struct.
  * (The first option_id of 0 will be treated as end-of-options.) */
@@ -23,7 +23,7 @@ typedef struct socket99_sockopt {
 /* Configuration for a socket. Not all of these fields need to
  * be set, and ones omitted from a C99-style "designated initializer"
  * struct literal will be zeroed out and replaced with defaults. */
-typedef struct {
+typedef struct socket99_config {
     /* Hostname and port, for TCP or UDP sockets. */
     char* host;
     int port;
@@ -71,7 +71,7 @@ enum socket99_status {
 };
 
 /* Result from calling socket99_open with a given socket99_config. */
-typedef struct {
+typedef struct socket99_result {
     /* Result code and errno value from failure (if any). */
     enum socket99_status status;
 

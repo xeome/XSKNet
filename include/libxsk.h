@@ -1,31 +1,12 @@
 #pragma once
+
 #include <linux/types.h>
 #include <stdbool.h>
 #include <xdp/libxdp.h>
-#define IF_NAMESIZE 16
-
-struct config {
-    enum xdp_attach_mode attach_mode;
-    __u32 xdp_flags;
-    int ifindex;
-    char* ifname;
-    char ifname_buf[IF_NAMESIZE];
-    int redirect_ifindex;
-    char* redirect_ifname;
-    char redirect_ifname_buf[IF_NAMESIZE];
-    bool do_unload;
-    __u32 prog_id;
-    bool reuse_maps;
-    char pin_dir[512];
-    char filename[512];
-    char progname[32];
-    char src_mac[18];
-    char dest_mac[18];
-    __u16 xsk_bind_flags;
-    int xsk_if_queue;
-    bool xsk_poll_mode;
-    bool unload_all;
-};
+#include <xdp/xsk.h>
+#include <getopt.h>
+#include <stdbool.h>
+#include "config.h"
 
 /* Defined in common_params.o */
 extern int verbose;
@@ -39,24 +20,6 @@ extern int verbose;
 
 /* This common_user.h is used by userspace programs */
 
-#include <getopt.h>
-
-struct option_wrapper {
-    struct option option;
-    char* help;
-    char* metavar;
-    bool required;
-};
-
-void usage(const char* prog_name, const char* doc, const struct option_wrapper* long_options, bool full);
-
-void parse_cmdline_args(int argc,
-                        char** argv,
-                        const struct option_wrapper* long_options,
-                        struct config* cfg,
-                        const char* doc,
-                        bool user);
-
 struct bpf_object* load_bpf_object_file(const char* filename, int ifindex);
 struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg);
 
@@ -65,8 +28,6 @@ const char* action2str(__u32 action);
 int check_map_fd_info(const struct bpf_map_info* info, const struct bpf_map_info* exp);
 
 int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_info* info);
-
-#include <stdbool.h>
 
 void* tcp_server_nonblocking(void* arg);
 char* send_to_daemon(char* msg);
@@ -101,10 +62,9 @@ struct poll_arg {
 void* stats_poll(void* arg);
 
 #define VETH_NUM 100
-#include <stdbool.h>
 
-bool create_veth(char* veth_name);
-bool delete_veth(char* veth_name);
+bool create_veth(const char* veth_name);
+bool delete_veth(const char* veth_name);
 int add_to_veth_list(char* veth_name);
 int remove_from_veth_list(char* veth_name);
 char** get_veth_list();
@@ -113,8 +73,6 @@ int init_veth_list();
 int load_xdp_program(struct config* cfg, struct xdp_program* prog, char* map_name);
 int do_unload(struct config* cfg);
 void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool* global_exit);
-
-#include <xdp/xsk.h>
 
 #define NUM_FRAMES 4096
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE

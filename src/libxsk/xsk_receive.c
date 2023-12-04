@@ -50,16 +50,16 @@ static void complete_tx(struct xsk_socket_info* xsk) {
     }
 }
 
-static inline __sum16 csum16_add(__sum16 csum, __be16 addend) {
-    uint16_t res = (uint16_t)csum;
+// static inline __sum16 csum16_add(__sum16 csum, __be16 addend) {
+//     uint16_t res = (uint16_t)csum;
 
-    res += (__u16)addend;
-    return (__sum16)(res + (res < (__u16)addend));
-}
+//     res += (__u16)addend;
+//     return (__sum16)(res + (res < (__u16)addend));
+// }
 
-static inline __sum16 csum16_sub(__sum16 csum, __be16 addend) {
-    return csum16_add(csum, ~addend);
-}
+// static inline __sum16 csum16_sub(__sum16 csum, __be16 addend) {
+//     return csum16_add(csum, ~addend);
+// }
 
 // static inline void csum_replace2(__sum16* sum, __be16 old, __be16 new) {
 //     *sum = ~csum16_add(csum16_sub(~(*sum), old), new);
