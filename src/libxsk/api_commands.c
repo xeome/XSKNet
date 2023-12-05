@@ -1,4 +1,5 @@
 #include <net/if.h>
+#include <linux/if.h>
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -27,6 +28,11 @@ Command commands[] = {
 };
 
 char* send_to_daemon(char* msg) {
+    if (msg == NULL) {
+        lwlog_err("msg is NULL");
+        return NULL;
+    }
+
     socket99_config socket_cfg = {
         .host = "127.0.0.1",
         .port = 8080,
@@ -78,6 +84,11 @@ char* send_to_daemon(char* msg) {
 }
 
 void* tcp_server_nonblocking(void* arg) {
+    if (arg == NULL) {
+        lwlog_err("arg is NULL");
+        return NULL;
+    }
+
     bool* global_exit = arg;
 
     int v_true = 1;
@@ -140,6 +151,11 @@ void handle_client(int client_fd, bool* global_exit) {
         return;
     }
 
+    if (client_fd < 0) {
+        handle_error("client_fd is negative");
+        return;
+    }
+
     char* buf = malloc(1024);
     if (buf == NULL) {
         handle_error("malloc failed");
@@ -176,7 +192,18 @@ void handle_client(int client_fd, bool* global_exit) {
     handle_cmd(buf, arg);
     free(buf);
 }
+
 static void load_config(char* veth_name, char* filename, bool peer) {
+    if (veth_name == NULL) {
+        lwlog_err("veth_name is NULL");
+        return;
+    }
+
+    if (filename == NULL) {
+        lwlog_err("filename is NULL");
+        return;
+    }
+
     char ifname[IFNAMSIZ];
     if (peer) {
         snprintf(ifname, IFNAMSIZ, "%s_peer", veth_name);
@@ -203,6 +230,16 @@ static void load_config(char* veth_name, char* filename, bool peer) {
 }
 
 static void unload_config(char* veth_name, char* filename, bool peer) {
+    if (veth_name == NULL) {
+        lwlog_err("veth_name is NULL");
+        return;
+    }
+
+    if (filename == NULL) {
+        lwlog_err("filename is NULL");
+        return;
+    }
+
     char ifname[IFNAMSIZ];
     if (peer) {
         snprintf(ifname, IFNAMSIZ, "%s_peer", veth_name);
@@ -236,9 +273,7 @@ void create_port(void* arg) {
 
     char* veth_name = arg;
     lwlog_info("Creating veth pair: %s", veth_name);
-    if (!create_veth(veth_name)) {
-        lwlog_err("Couldn't create veth pair");
-    }
+    create_veth(veth_name);
 
     // Load peer af_xdp program
     load_config(veth_name, "obj/af_xdp.o", true);
@@ -279,6 +314,16 @@ void delete_port(void* arg) {
 }
 
 int handle_cmd(char* cmd, void* arg) {
+    if (cmd == NULL) {
+        lwlog_err("cmd is NULL");
+        return -1;
+    }
+
+    if (arg == NULL) {
+        lwlog_err("arg is NULL");
+        return -1;
+    }
+
     for (int i = 0; i < sizeof(commands) / sizeof(Command); i++) {
         if (strcmp(cmd, commands[i].command) == 0) {
             commands[i].handler(arg);
@@ -299,7 +344,6 @@ int update_devmap(int ifindex) {
     char pin_dir[PATH_MAX];
     struct bpf_map_info info = {0};
 
-    // get ifname from ifindex
     char ifname[IF_NAMESIZE];
     if (if_indextoname(ifindex, ifname) == NULL) {
         lwlog_err("Couldn't get ifname from ifindex %d", ifindex);

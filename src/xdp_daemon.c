@@ -75,6 +75,11 @@ int main(int argc, char** argv) {
 }
 
 void unload_xdp_program(const char* ifname) {
+    if (ifname == NULL) {
+        lwlog_err("ifname is NULL");
+        return;
+    }
+
     lwlog_info("Unloading XDP program from %s", ifname);
 
     cfg.ifindex = if_nametoindex(ifname);

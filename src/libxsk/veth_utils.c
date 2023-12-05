@@ -13,7 +13,12 @@ int init_veth_list() {
     return 0;
 }
 
-int add_to_veth_list(char* veth_name) {
+int add_to_veth_list(const char* veth_name) {
+    if (veth_name == NULL) {
+        lwlog_err("veth_name is NULL");
+        return -1;
+    }
+
     for (int i = 0; i < VETH_NUM; i++) {
         if (veth_list[i] == NULL) {
             veth_list[i] = strdup(veth_name);
@@ -24,7 +29,12 @@ int add_to_veth_list(char* veth_name) {
     return -1;  // List is full
 }
 
-int remove_from_veth_list(char* veth_name) {
+int remove_from_veth_list(const char* veth_name) {
+    if (veth_name == NULL) {
+        lwlog_err("veth_name is NULL");
+        return -1;
+    }
+
     for (int i = 0; i < VETH_NUM; i++) {
         if (veth_list[i] != NULL && strcmp(veth_list[i], veth_name) == 0) {
             free(veth_list[i]);
@@ -35,19 +45,29 @@ int remove_from_veth_list(char* veth_name) {
     return -1;  // Name not found
 }
 
-bool create_veth(const char* veth_name) {
+void create_veth(const char* veth_name) {
+    if (veth_name == NULL) {
+        lwlog_err("veth_name is NULL");
+        return;
+    }
+
     char cmd[1024];
     sprintf(cmd, "./testenv/create_veth.sh %s %s_peer", veth_name, veth_name);
     lwlog_info("Running command: %s", cmd);
     int err = system(cmd);
     if (err) {
         lwlog_err("Couldn't create veth pair: (%d)", err);
-        return false;
+        return;
     }
-    return true;
+    return;
 }
 
 void delete_veth(const char* veth_name) {
+    if (veth_name == NULL) {
+        lwlog_err("veth_name is NULL");
+        return;
+    }
+
     errno = 0;
     if (strcmp(veth_name, "lo") == 0) {
         lwlog_err("Can't delete loopback interface");

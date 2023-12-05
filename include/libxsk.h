@@ -50,10 +50,10 @@ struct poll_arg {
 void* stats_poll(void* arg);
 
 // veth utils
-bool create_veth(const char* veth_name);
+void create_veth(const char* veth_name);
 void delete_veth(const char* veth_name);
-int add_to_veth_list(char* veth_name);
-int remove_from_veth_list(char* veth_name);
+int add_to_veth_list(const char* veth_name);
+int remove_from_veth_list(const char* veth_name);
 char** get_veth_list();
 int init_veth_list();
 
