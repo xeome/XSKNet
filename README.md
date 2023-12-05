@@ -1,8 +1,10 @@
-# AF_XDP L2 Forwarding
+# XSKNet
 
 ## Introduction
 
-This project implements Kernel bypass using AF_XDP and achieves high performance packet forwarding to user space.
+This project implements Kernel bypass using AF_XDP (XSK) to implement a custom networking stack. It bypasses the traditional kernel stack and achieving superior throughput and low-latency communication.
+
+*Note that this project is designed for a specific use case and is not intended to be a general purpose networking stack.*
 
 ## Project architecture
 
@@ -10,7 +12,7 @@ This project implements Kernel bypass using AF_XDP and achieves high performance
 
 ## Build
 
-You need libxdp and libbpf installed.
+Ensure libxdp and libbpf are installed.
 
 ```sh
 make
@@ -21,17 +23,21 @@ make
 - [x] Redirect packets from PHY to veth
 - [x] Receive packets from veth in user space using AF_XDP
 - [x] Transmit packets from user space to veth using AF_XDP
-- [ ] Build routing table for retransmission
+- [ ] Build a dynamic routing table for retransmission
 
 ## Usage
 
 ### Daemon
 
+To run the daemon, you need to specify physical interface and the path to the XDP object file.
+
 ```sh
-sudo bin/xdp_daemon -d test --filename obj/xdp_kern_obj.o
+sudo bin/xdp_daemon --dev wlan0 --filename obj/xdp_kern.o
 ```
 
 ### User client
+
+Pass `-p` to enable polling mode. -d specifies the name of the veth interface.
 
 ```sh
 sudo bin/xdp_user -d test -p
