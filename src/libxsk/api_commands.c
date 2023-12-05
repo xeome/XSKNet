@@ -32,7 +32,7 @@ char* send_to_daemon(char* msg) {
         .port = 8080,
     };
 
-    lwlog_info("Connecting to %s:%d", socket_cfg.host, socket_cfg.port);
+    lwlog_info("Sending to %s:%d", socket_cfg.host, socket_cfg.port);
     socket99_result res;
     if (!socket99_open(&socket_cfg, &res)) {
         socket99_fprintf(stderr, &res);
@@ -158,7 +158,6 @@ void handle_client(int client_fd, bool* global_exit) {
     }
 
     buf[received] = '\0';
-    lwlog_info("Received %ld bytes: %s", received, buf);
 
     char* space = strchr(buf, ' ');
     if (space == NULL) {
@@ -177,6 +176,57 @@ void handle_client(int client_fd, bool* global_exit) {
     handle_cmd(buf, arg);
     free(buf);
 }
+static void load_config(char* veth_name, char* filename, bool peer) {
+    char ifname[IFNAMSIZ];
+    if (peer) {
+        snprintf(ifname, IFNAMSIZ, "%s_peer", veth_name);
+    } else {
+        strncpy(ifname, veth_name, IFNAMSIZ);
+    }
+
+    struct config cfg = {
+        .ifindex = -1,
+        .unload_all = true,
+        .ifname = ifname,
+    };
+    strncpy(cfg.filename, filename, 512);
+
+    cfg.ifindex = if_nametoindex(ifname);
+    if (cfg.ifindex == 0) {
+        lwlog_err("Couldn't get ifindex for %s", ifname);
+        return;
+    }
+
+    if (load_xdp_program(&cfg, NULL, peer ? "xsks_map" : NULL) != 0) {
+        lwlog_err("Couldn't load XDP program on iface '%s'", cfg.ifname);
+    }
+}
+
+static void unload_config(char* veth_name, char* filename, bool peer) {
+    char ifname[IFNAMSIZ];
+    if (peer) {
+        snprintf(ifname, IFNAMSIZ, "%s_peer", veth_name);
+    } else {
+        strncpy(ifname, veth_name, IFNAMSIZ);
+    }
+
+    struct config cfg = {
+        .ifindex = -1,
+        .unload_all = true,
+        .ifname = ifname,
+    };
+    strncpy(cfg.filename, filename, 512);
+
+    cfg.ifindex = if_nametoindex(ifname);
+    if (cfg.ifindex == 0) {
+        lwlog_err("Couldn't get ifindex for %s", ifname);
+        return;
+    }
+
+    if (do_unload(&cfg) != 0) {
+        lwlog_err("Couldn't unload XDP program on iface '%s'", cfg.ifname);
+    }
+}
 
 void create_port(void* arg) {
     if (arg == NULL) {
@@ -190,49 +240,16 @@ void create_port(void* arg) {
         lwlog_err("Couldn't create veth pair");
     }
 
-    char veth_name_peer[IFNAMSIZ];
-    snprintf(veth_name_peer, IFNAMSIZ, "%s_peer", veth_name);
-
-    int non_peer_ifindex = if_nametoindex(veth_name);
-
-    // Load peer AF_XDP program
-    struct config af_xdp = {
-        .ifindex = -1,
-        .unload_all = true,
-        .filename = "obj/af_xdp.o",
-        .ifname = veth_name_peer,
-    };
-
-    af_xdp.ifindex = if_nametoindex(veth_name_peer);
-    if (af_xdp.ifindex == 0) {
-        lwlog_err("Couldn't get ifindex for %s", veth_name_peer);
-        return;
-    }
-
-    if (load_xdp_program(&af_xdp, NULL, "xsks_map") != 0) {
-        lwlog_err("Couldn't load XDP program");
-    }
+    // Load peer af_xdp program
+    load_config(veth_name, "obj/af_xdp.o", true);
 
     // Load non-peer dummy xdp program
-    struct config xdp_dummy = {
-        .ifindex = -1,
-        .unload_all = true,
-        .filename = "obj/xdp_dummy.o",
-        .ifname = veth_name,
-    };
-    xdp_dummy.ifindex = if_nametoindex(veth_name);
-    if (xdp_dummy.ifindex == 0) {
-        lwlog_err("Couldn't get ifindex for %s", veth_name);
-        return;
-    }
+    load_config(veth_name, "obj/xdp_dummy.o", false);
 
-    if (load_xdp_program(&xdp_dummy, NULL, NULL) != 0) {
-        lwlog_err("Couldn't load XDP program");
-    }
-
+    int non_peer_ifindex = if_nametoindex(veth_name);
     int ret = update_devmap(non_peer_ifindex);
     if (ret == -1) {
-        lwlog_err("Couldn't update devmap");
+        lwlog_err("Couldn't update devmap for %s", veth_name);
     }
 
     add_to_veth_list(veth_name);
@@ -246,49 +263,14 @@ void delete_port(void* arg) {
 
     char* veth_name = arg;
 
-    char veth_name_peer[IFNAMSIZ];
-    snprintf(veth_name_peer, IFNAMSIZ, "%s_peer", veth_name);
-    struct config af_xdp = {
-        .ifindex = -1,
-        .unload_all = true,
-        .filename = "obj/af_xdp.o",
-        .ifname = veth_name_peer,
-    };
-
-    af_xdp.ifindex = if_nametoindex(veth_name);
-    if (af_xdp.ifindex == 0) {
-        lwlog_err("Couldn't get ifindex for %s", veth_name);
-        return;
-    }
-
-    // lwlog_info("Unloading XDP program");
-    lwlog_info("Unloading XDP program for %s", veth_name_peer);
-    if (do_unload(&af_xdp) != 0) {
-        lwlog_err("Couldn't unload XDP program for %s", veth_name_peer);
-    }
+    // Unload peer af_xdp program
+    unload_config(veth_name, "obj/af_xdp.o", true);
 
     // Unload non-peer dummy xdp program
-    struct config xdp_dummy = {
-        .ifindex = -1,
-        .unload_all = true,
-        .filename = "obj/xdp_dummy.o",
-        .ifname = veth_name,
-    };
-    xdp_dummy.ifindex = if_nametoindex(veth_name);
-    if (xdp_dummy.ifindex == 0) {
-        lwlog_err("Couldn't get ifindex for %s", veth_name);
-        return;
-    }
-
-    lwlog_info("Unloading XDP program for %s", veth_name);
-    if (do_unload(&xdp_dummy) != 0) {
-        lwlog_err("Couldn't unload XDP program for %s", veth_name);
-    }
+    unload_config(veth_name, "obj/xdp_dummy.o", false);
 
     lwlog_info("Deleting veth pair: %s", veth_name);
-    if (!delete_veth(veth_name)) {
-        lwlog_err("Couldn't delete veth pair");
-    }
+    delete_veth(veth_name);
 
     int ret = remove_from_veth_list(veth_name);
     if (ret == -1) {
@@ -297,7 +279,6 @@ void delete_port(void* arg) {
 }
 
 int handle_cmd(char* cmd, void* arg) {
-    lwlog_info("Received command: %s", cmd);
     for (int i = 0; i < sizeof(commands) / sizeof(Command); i++) {
         if (strcmp(cmd, commands[i].command) == 0) {
             commands[i].handler(arg);
@@ -325,7 +306,7 @@ int update_devmap(int ifindex) {
         return -1;
     }
 
-    int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, "wlan0");
+    int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, phy_ifname);
     if (len < 0 || len >= PATH_MAX) {
         lwlog_err("Couldn't format pin_dir");
         return -1;
@@ -341,10 +322,10 @@ int update_devmap(int ifindex) {
     int ret = bpf_map_update_elem(map_fd, &key, &ifindex, BPF_ANY);
 
     if (ret) {
-        lwlog_err("Couldn't update devmap");
+        lwlog_info("Couldn't update devmap for %s", ifname);
         return -1;
     }
 
-    lwlog_info("Redirecting packets to %s on ifindex %d", ifname, ifindex);
+    lwlog_info("Redirecting packets from %s to %s", phy_ifname, ifname);
     return 0;
 }

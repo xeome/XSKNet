@@ -255,7 +255,6 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, char* map_nam
     char errmsg[1024];
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
     DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
-
     if (cfg->filename[0] != 0) {
         xdp_opts.open_filename = cfg->filename;
         xdp_opts.prog_name = cfg->progname;

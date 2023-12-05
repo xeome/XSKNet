@@ -12,9 +12,9 @@ HEADERS := $(wildcard $(INC_PATH)/*.h)
 
 CC := clang
 # CFLAGS is used for non-bpf program compilation
-CFLAGS := -O2 -g -Wall -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -I$(INC_PATH) #-fsanitize=address -fsanitize=undefined -fsanitize=bounds -fsanitize=nullability  -fsanitize=integer -fsanitize=object-size -fsanitize=shift -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=vptr
+CFLAGS := -O2 -g -Wall -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -I$(INC_PATH)#-fsanitize=address -fsanitize=undefined -fsanitize=bounds -fsanitize=nullability  -fsanitize=integer -fsanitize=object-size -fsanitize=shift -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=vptr
 # CCOBJBPFFLAGS is used for bpf program compilation
-CCOBJBPFFLAGS := $(CFLAGS) -target bpf -D __BPF_TRACING__ -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -c
+CCOBJBPFFLAGS := -O2 -g -Wall -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -target bpf -D __BPF_TRACING__ -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -c
 
 all: $(BIN_PATH)/xdp_daemon $(BIN_PATH)/xdp_user $(OBJ_PATH)/af_xdp.o $(OBJ_PATH)/xdp_kern.o $(OBJ_PATH)/xdp_dummy.o
 

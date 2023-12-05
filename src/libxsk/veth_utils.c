@@ -47,16 +47,16 @@ bool create_veth(const char* veth_name) {
     return true;
 }
 
-bool delete_veth(const char* veth_name) {
+void delete_veth(const char* veth_name) {
     errno = 0;
     if (strcmp(veth_name, "lo") == 0) {
         lwlog_err("Can't delete loopback interface");
-        return false;
+        return;
     }
 
-    if (strcmp(veth_name, "wlan0") == 0) {
-        lwlog_err("Can't delete wlan0 interface");
-        return false;
+    if (strcmp(veth_name, phy_ifname) == 0) {
+        lwlog_info("Physical interface %s requested for deletion, ignoring", phy_ifname);
+        return;
     }
 
     char cmd[1024];
@@ -64,9 +64,8 @@ bool delete_veth(const char* veth_name) {
     int err = system(cmd);
     if (err) {
         lwlog_err("Couldn't delete veth pair: (%d)", err);
-        return false;
+        return;
     }
-    return true;
 }
 
 char** get_veth_list() {

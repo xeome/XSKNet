@@ -20,6 +20,7 @@ extern int verbose;
 #define EXIT_FAIL_BPF 40
 
 static const char* pin_basedir = "/sys/fs/bpf";
+static const char* phy_ifname = "wlan0";
 #define VETH_NUM 100
 
 // xdp utils
@@ -50,7 +51,7 @@ void* stats_poll(void* arg);
 
 // veth utils
 bool create_veth(const char* veth_name);
-bool delete_veth(const char* veth_name);
+void delete_veth(const char* veth_name);
 int add_to_veth_list(char* veth_name);
 int remove_from_veth_list(char* veth_name);
 char** get_veth_list();
