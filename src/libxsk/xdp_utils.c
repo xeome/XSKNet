@@ -227,7 +227,6 @@ int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir, char*
         lwlog_err("ERR: creating map_name");
         return EXIT_FAIL_OPTION;
     }
-
     /* Existing/previous XDP prog might not have cleaned up */
     if (access(map_filename, F_OK) != -1) {
         if (verbose)
@@ -283,6 +282,11 @@ int load_xdp_program(struct config* cfg, struct xdp_program* prog, char* map_nam
             return err;
         }
 
+        if (map_name == NULL) {
+            lwlog_info("No map name specified for %s, not pinning maps", cfg->ifname);
+            return 0;
+        }
+
         /* Pin the maps */
         err = pin_maps_in_bpf_object(xdp_program__bpf_obj(prog), cfg->ifname, map_name);
         if (err) {
@@ -302,7 +306,7 @@ int do_unload(struct config* cfg) {
 
     mp = xdp_multiprog__get_from_ifindex(cfg->ifindex);
     if (libxdp_get_error(mp)) {
-        lwlog_warning("Unable to get xdp_dispatcher program");
+        lwlog_warning("Unable to get xdp_multiprog program for ifname %s", cfg->ifname);
         goto defer;
     } else if (!mp) {
         lwlog_warning("No XDP program loaded on %s", cfg->ifname);

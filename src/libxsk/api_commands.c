@@ -196,37 +196,37 @@ void create_port(void* arg) {
     int non_peer_ifindex = if_nametoindex(veth_name);
 
     // Load peer AF_XDP program
-    struct config cfg = {
+    struct config af_xdp = {
         .ifindex = -1,
         .unload_all = true,
         .filename = "obj/af_xdp.o",
         .ifname = veth_name_peer,
     };
 
-    cfg.ifindex = if_nametoindex(veth_name_peer);
-    if (cfg.ifindex == 0) {
+    af_xdp.ifindex = if_nametoindex(veth_name_peer);
+    if (af_xdp.ifindex == 0) {
         lwlog_err("Couldn't get ifindex for %s", veth_name_peer);
         return;
     }
 
-    if (load_xdp_program(&cfg, NULL, "xsks_map") != 0) {
+    if (load_xdp_program(&af_xdp, NULL, "xsks_map") != 0) {
         lwlog_err("Couldn't load XDP program");
     }
 
     // Load non-peer dummy xdp program
-    struct config cfg2 = {
+    struct config xdp_dummy = {
         .ifindex = -1,
         .unload_all = true,
         .filename = "obj/xdp_dummy.o",
         .ifname = veth_name,
     };
-    cfg2.ifindex = if_nametoindex(veth_name);
-    if (cfg2.ifindex == 0) {
+    xdp_dummy.ifindex = if_nametoindex(veth_name);
+    if (xdp_dummy.ifindex == 0) {
         lwlog_err("Couldn't get ifindex for %s", veth_name);
         return;
     }
 
-    if (load_xdp_program(&cfg2, NULL, "xsks_map") != 0) {
+    if (load_xdp_program(&xdp_dummy, NULL, NULL) != 0) {
         lwlog_err("Couldn't load XDP program");
     }
 
@@ -248,40 +248,41 @@ void delete_port(void* arg) {
 
     char veth_name_peer[IFNAMSIZ];
     snprintf(veth_name_peer, IFNAMSIZ, "%s_peer", veth_name);
-    struct config cfg = {
+    struct config af_xdp = {
         .ifindex = -1,
         .unload_all = true,
         .filename = "obj/af_xdp.o",
         .ifname = veth_name_peer,
     };
 
-    cfg.ifindex = if_nametoindex(veth_name);
-    if (cfg.ifindex == 0) {
+    af_xdp.ifindex = if_nametoindex(veth_name);
+    if (af_xdp.ifindex == 0) {
         lwlog_err("Couldn't get ifindex for %s", veth_name);
         return;
     }
 
-    lwlog_info("Unloading XDP program");
-    if (do_unload(&cfg) != 0) {
-        lwlog_err("Couldn't unload XDP program");
+    // lwlog_info("Unloading XDP program");
+    lwlog_info("Unloading XDP program for %s", veth_name_peer);
+    if (do_unload(&af_xdp) != 0) {
+        lwlog_err("Couldn't unload XDP program for %s", veth_name_peer);
     }
 
     // Unload non-peer dummy xdp program
-    struct config cfg2 = {
+    struct config xdp_dummy = {
         .ifindex = -1,
         .unload_all = true,
         .filename = "obj/xdp_dummy.o",
         .ifname = veth_name,
     };
-    cfg2.ifindex = if_nametoindex(veth_name);
-    if (cfg2.ifindex == 0) {
+    xdp_dummy.ifindex = if_nametoindex(veth_name);
+    if (xdp_dummy.ifindex == 0) {
         lwlog_err("Couldn't get ifindex for %s", veth_name);
         return;
     }
 
-    lwlog_info("Unloading XDP program");
-    if (do_unload(&cfg2) != 0) {
-        lwlog_err("Couldn't unload XDP program");
+    lwlog_info("Unloading XDP program for %s", veth_name);
+    if (do_unload(&xdp_dummy) != 0) {
+        lwlog_err("Couldn't unload XDP program for %s", veth_name);
     }
 
     lwlog_info("Deleting veth pair: %s", veth_name);

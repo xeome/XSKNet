@@ -48,6 +48,7 @@ bool create_veth(const char* veth_name) {
 }
 
 bool delete_veth(const char* veth_name) {
+    errno = 0;
     if (strcmp(veth_name, "lo") == 0) {
         lwlog_err("Can't delete loopback interface");
         return false;
