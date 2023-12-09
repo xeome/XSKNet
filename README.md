@@ -8,7 +8,7 @@ This project implements Kernel bypass using AF_XDP (XSK) to implement a custom n
 
 ## Project architecture
 
-![Untitled-2023-11-18-2228_dark](https://github.com/xeome/af_xdp-l2fwd/assets/44901648/1fa453b2-414b-434c-afe8-5ce034ca71dd)
+![XSKNet](https://github.com/xeome/XSKNet/assets/44901648/8122d687-f21c-4dfa-b8a7-51f57dca400f)
 
 ## Build
 
