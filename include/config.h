@@ -17,8 +17,10 @@ struct config {
     char pin_dir[512];
     char filename[512];
     char progname[32];
-    char src_mac[18];
-    char dest_mac[18];
+    // char src_mac[18];
+    // char dest_mac[18];
+    unsigned char src_mac[6];
+    unsigned char dest_mac[6];
     __u16 xsk_bind_flags;
     int xsk_if_queue;
     bool xsk_poll_mode;

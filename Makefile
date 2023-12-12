@@ -29,10 +29,10 @@ $(OBJ_PATH)/xdp_kern.o: $(XDP_KERNEL_SRC_PATH)/xdp_kern.c
 	$(CC) $(CCOBJBPFFLAGS) -o $@ $<
 
 # Compile XDP user programs
-$(BIN_PATH)/xdp_daemon: $(XDP_USER_SRC) $(LIB_SRC) $(HEADERS)
+$(BIN_PATH)/xdp_daemon: $(XDP_USER_SRC) $(LIB_SRC) $(HEADERS) $(SRC_PATH)/xdp_daemon.c
 	$(CC) $(CFLAGS) -o $@ $(XDP_USER_SRC) $(LIB_SRC) $(SRC_PATH)/xdp_daemon.c -lxdp -lbpf
 
-$(BIN_PATH)/xdp_user: $(XDP_USER_SRC) $(LIB_SRC) $(HEADERS)
+$(BIN_PATH)/xdp_user: $(XDP_USER_SRC) $(LIB_SRC) $(HEADERS) $(SRC_PATH)/xdp_user.c
 	$(CC) $(CFLAGS) -o $@ $(XDP_USER_SRC) $(LIB_SRC) $(SRC_PATH)/xdp_user.c -lxdp -lbpf
 
 clean:

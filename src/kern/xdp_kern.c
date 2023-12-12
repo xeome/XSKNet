@@ -1,17 +1,9 @@
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <string.h>
-#include <linux/icmp.h>
 #include <linux/if_ether.h>
-#include <linux/if_vlan.h>
-#include <linux/in.h>
+#include <arpa/inet.h>
 #include <linux/ip.h>
-#include <linux/tcp.h>
-#include <linux/udp.h>
-#include <sys/cdefs.h>
 
 /**
  * Main XDP program entry point.
@@ -23,6 +15,7 @@
 #define memcpy(dest, src, n) __builtin_memcpy((dest), (src), (n))
 #endif
 
+#define OVER(x, d) (x + 1 > (typeof(x))d)
 struct pkt_meta {
     __u32 port;
 };
@@ -42,20 +35,37 @@ struct {
     __uint(max_entries, 64);
 } xdp_devmap SEC(".maps");
 
-// static __always_inline int parse_ethhdr(struct ethhdr* eth, void* data_end, struct pkt_meta* pkt_meta) {
-//     void* data = (void*)(eth + 1);
-
-//     if (data + sizeof(struct pkt_meta) > data_end) {
-//         return 0;
-//     }
-
-//     memcpy(pkt_meta, data, sizeof(struct pkt_meta));
-
-//     return 1;
-// }
-
 SEC("xdp_redir")
 int xdp_redirect(struct xdp_md* ctx) {
+    void* data_end = (void*)(long)ctx->data_end;
+    void* data = (void*)(long)ctx->data;
+
+    struct ethhdr* eth = data;
+    struct iphdr* iph = (struct iphdr*)(eth + 1);
+
+    if (OVER(eth, data_end))
+        return XDP_DROP;
+
+    if (eth->h_proto != ntohs(ETH_P_IP))
+        return XDP_PASS;
+
+    if (OVER(iph, data_end))
+        return XDP_DROP;
+
+    if (iph->protocol != IPPROTO_ICMP)
+        return XDP_PASS;
+
+    bpf_printk("Physical interface xdp_redirect------------------");
+
+    bpf_printk("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_source[0], eth->h_source[1], eth->h_source[2],
+               eth->h_source[3], eth->h_source[4], eth->h_source[5]);
+
+    bpf_printk("Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_dest[0], eth->h_dest[1], eth->h_dest[2], eth->h_dest[3],
+               eth->h_dest[4], eth->h_dest[5]);
+
+    bpf_printk("Source IP: %pI4", &iph->saddr);
+    bpf_printk("Dest IP: %pI4", &iph->daddr);
+
     __u32 port = 0;
 
     int* ifindex = bpf_map_lookup_elem(&xdp_devmap, &port);
@@ -64,7 +74,6 @@ int xdp_redirect(struct xdp_md* ctx) {
         return XDP_DROP;
     }
 
-    bpf_printk("xdp_redirect: port=%d\n", port);
     return bpf_redirect(*ifindex, 0);
 
     // if (bpf_map_lookup_elem(&xdp_devmap, &port)) {

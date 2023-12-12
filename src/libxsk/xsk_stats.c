@@ -48,22 +48,24 @@ static void stats_print(struct stats_record* stats_rec, struct stats_record* sta
         period = 1;
 
     packets = stats_rec->rx_packets - stats_prev->rx_packets;
-    pps = packets / period;
-
     bytes = stats_rec->rx_bytes - stats_prev->rx_bytes;
-    bps = (bytes * 8) / period / 1000000;
 
-    printf(fmt, "AF_XDP RX:", stats_rec->rx_packets, pps, stats_rec->rx_bytes / 1000, bps, period);
+    if (packets != 0 || bytes != 0) {
+        pps = packets / period;
+        bps = (bytes * 8) / period / 1000000;
+        printf(fmt, "AF_XDP RX:", stats_rec->rx_packets, pps, stats_rec->rx_bytes / 1000, bps, period);
+    }
 
     packets = stats_rec->tx_packets - stats_prev->tx_packets;
-    pps = packets / period;
-
     bytes = stats_rec->tx_bytes - stats_prev->tx_bytes;
-    bps = (bytes * 8) / period / 1000000;
 
-    printf(fmt, "       TX:", stats_rec->tx_packets, pps, stats_rec->tx_bytes / 1000, bps, period);
-
-    printf("\n");
+    if (packets != 0 || bytes != 0) {
+        pps = packets / period;
+        bps = (bytes * 8) / period / 1000000;
+        printf(fmt, "       TX:", stats_rec->tx_packets, pps, stats_rec->tx_bytes / 1000, bps, period);
+        printf("\n");
+    }
+    printf(".");
 }
 
 void* stats_poll(void* arg) {

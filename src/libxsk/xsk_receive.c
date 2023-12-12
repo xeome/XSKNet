@@ -5,6 +5,7 @@
 #include <linux/icmp.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <linux/in.h>
 
 #include "libxsk.h"
 #include "lwlog.h"
@@ -77,22 +78,16 @@ static inline void csum_replace2(uint16_t* sum, uint16_t old, uint16_t new) {
 }
 
 // ipv4 instead
-static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len) {
+static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, unsigned char mac_addr[6]) {
     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     errno = 0;
     int ret;
     uint32_t tx_idx = 0;
-    uint8_t tmp_mac[ETH_ALEN];
     struct in_addr tmp_ip;
     struct ethhdr* eth = (struct ethhdr*)pkt;
     struct iphdr* ipv4 = (struct iphdr*)(eth + 1);
     struct icmphdr* icmp = (struct icmphdr*)(ipv4 + 1);
-
-    // if (len < (sizeof(*eth) + sizeof(*ipv4) + sizeof(*icmp))) {
-    //     lwlog_warning("Received too small packet");
-    //     return false;
-    // }
 
     if (len < sizeof(*eth)) {
         return false;
@@ -120,17 +115,37 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
         return false;
     }
 
-    memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
     memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
-    memcpy(eth->h_source, tmp_mac, ETH_ALEN);
+    memcpy(eth->h_source, mac_addr, ETH_ALEN);
+
+    // set tmp_ip_addr to 10.0.0.1
+    __be32 tmp_ip_addr = inet_addr("10.0.0.2");
 
     memcpy(&tmp_ip, &ipv4->saddr, sizeof(tmp_ip));
-    memcpy(&ipv4->saddr, &ipv4->daddr, sizeof(tmp_ip));
+    memcpy(&ipv4->saddr, &tmp_ip_addr, sizeof(tmp_ip_addr));
     memcpy(&ipv4->daddr, &tmp_ip, sizeof(tmp_ip));
 
     icmp->type = ICMP_ECHOREPLY;
+    csum_replace2(&icmp->checksum, ICMP_ECHO, ICMP_ECHOREPLY);
 
-    csum_replace2(&icmp->checksum, htons(ICMP_ECHO << 8), htons(ICMP_ECHOREPLY << 8));
+    // fib_params.family = AF_INET;
+    // fib_params.tos = ipv4->tos;
+    // fib_params.l4_protocol = ipv4->protocol;
+    // fib_params.sport = 0;
+    // fib_params.dport = 0;
+    // fib_params.tot_len = ntohs(ipv4->tot_len);
+    // fib_params.ipv4_src = ipv4->saddr;
+    // fib_params.ipv4_dst = ipv4->daddr;
+    // fib_params.ifindex = ifindex;
+    // ret = bpf_fib_lookup(ctx, &fib_params, sizeof(fib_params), BPF_FIB_LOOKUP_DIRECT);
+
+    lwlog_info("Transmitting ICMPv4 echo reply");
+    lwlog_info("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_source[0], eth->h_source[1], eth->h_source[2],
+               eth->h_source[3], eth->h_source[4], eth->h_source[5]);
+    lwlog_info("Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_dest[0], eth->h_dest[1], eth->h_dest[2], eth->h_dest[3],
+               eth->h_dest[4], eth->h_dest[5]);
+    lwlog_info("Source IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->saddr));
+    lwlog_info("Dest IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->daddr));
 
     /* Here we sent the packet out of the receive port. Note that
      * we allocate one entry and schedule it. Your design would be
@@ -212,7 +227,7 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
 //     return true;
 // }
 
-static void handle_receive_packets(struct xsk_socket_info* xsk) {
+static void handle_receive_packets(struct xsk_socket_info* xsk, unsigned char mac_addr[6]) {
     unsigned int rcvd, stock_frames, i;
     uint32_t idx_rx = 0, idx_fq = 0;
     int ret;
@@ -242,7 +257,7 @@ static void handle_receive_packets(struct xsk_socket_info* xsk) {
         uint64_t addr = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx)->addr;
         uint32_t len = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++)->len;
 
-        if (!process_packet(xsk, addr, len))
+        if (!process_packet(xsk, addr, len, mac_addr))
             xsk_free_umem_frame(xsk, addr);
 
         xsk->stats.rx_bytes += len;
@@ -269,6 +284,6 @@ void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool
             if (ret <= 0 || ret > 1)
                 continue;
         }
-        handle_receive_packets(xsk_socket);
+        handle_receive_packets(xsk_socket, cfg->src_mac);
     }
 }

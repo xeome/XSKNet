@@ -1,8 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
 #include <linux/bpf.h>
-
+#include <linux/if_ether.h>
+#include <linux/ip.h>
 #include <bpf/bpf_helpers.h>
+#include <arpa/inet.h>
+
+#define OVER(x, d) (x + 1 > (typeof(x))d)
 
 struct {
     __uint(type, BPF_MAP_TYPE_XSKMAP);
@@ -22,7 +26,35 @@ SEC("xdp")
 int xdp_sock_prog(struct xdp_md* ctx) {
     int index = ctx->rx_queue_index;
 
-    bpf_printk("xdp_sock_prog: index=%d\n", index);
+    void* data_end = (void*)(long)ctx->data_end;
+    void* data = (void*)(long)ctx->data;
+
+    struct ethhdr* eth = data;
+    struct iphdr* iph = (struct iphdr*)(eth + 1);
+
+    if (OVER(eth, data_end))
+        return XDP_DROP;
+
+    if (eth->h_proto != ntohs(ETH_P_IP))
+        return XDP_PASS;
+
+    if (OVER(iph, data_end))
+        return XDP_DROP;
+
+    if (iph->protocol != IPPROTO_ICMP)
+        return XDP_PASS;
+    struct bpf_fib_lookup fib_params = {};
+
+    bpf_printk("AF_XDP socket program-------------");
+
+    bpf_printk("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_source[0], eth->h_source[1], eth->h_source[2],
+               eth->h_source[3], eth->h_source[4], eth->h_source[5]);
+
+    bpf_printk("Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_dest[0], eth->h_dest[1], eth->h_dest[2], eth->h_dest[3],
+               eth->h_dest[4], eth->h_dest[5]);
+
+    bpf_printk("Source IP: %pI4", &iph->saddr);
+    bpf_printk("Dest IP: %pI4", &iph->daddr);
 
     /* A set entry here means that the correspnding queue_id
      * has an active AF_XDP socket bound to it. */

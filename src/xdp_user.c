@@ -4,6 +4,10 @@
 #include <net/if.h>
 #include <sys/resource.h>
 #include <pthread.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <string.h>
 
 #include "libxsk.h"
 #include "lwlog.h"
@@ -30,6 +34,34 @@ void request_port_deletion();
 void sigint_handler(int signal) {
     global_exit = true;
     lwlog_info("Exiting XDP Daemon");
+}
+
+void get_mac_address(unsigned char* mac_addr, int ifindex) {
+    int fd;
+    struct ifreq ifr;
+    char* ifname = if_indextoname(ifindex, &ifr);
+    if (ifname == NULL) {
+        lwlog_err("ERROR: Couldn't get interface name from index");
+        exit(EXIT_FAILURE);
+    }
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd == -1) {
+        lwlog_err("ERROR: Couldn't create socket");
+        exit(EXIT_FAILURE);
+    }
+
+    ifr.ifr_addr.sa_family = AF_INET;
+    strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+
+    if (ioctl(fd, SIOCGIFHWADDR, &ifr) == -1) {
+        lwlog_err("ERROR: Couldn't get MAC address");
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd);
+
+    memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, 6);
 }
 
 int main(int argc, char** argv) {
@@ -59,6 +91,8 @@ int main(int argc, char** argv) {
         lwlog_err("ERROR: Couldn't allocate memory for veth peer name");
         exit(EXIT_FAILURE);
     }
+
+    int original_ifindex = if_nametoindex(cfg.ifname);
     snprintf(veth_peer_name, IFNAMSIZ, "%s_peer", cfg.ifname);
     char* ifname_orig = strdup(cfg.ifname);
     cfg.ifindex = if_nametoindex(veth_peer_name);
@@ -85,6 +119,16 @@ int main(int argc, char** argv) {
         lwlog_crit("ERROR: Failed creating stats thread \"%s\"\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
+
+    // get mac address of veth peer
+    unsigned char mac_addr[6];
+    get_mac_address(mac_addr, original_ifindex);
+
+    lwlog_info("MAC address of veth: %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
+               mac_addr[4], mac_addr[5]);
+
+    // copy mac address to config
+    memcpy(cfg.src_mac, mac_addr, 6);
 
     /* Start receiving (Blocking)*/
     rx_and_process(&cfg, xsk_socket, &global_exit);
