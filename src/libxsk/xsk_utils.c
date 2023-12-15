@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <net/if.h>
 #include "libxsk.h"
 #include "lwlog.h"
 
@@ -136,6 +137,13 @@ struct xsk_socket_info* init_xsk_socket(struct config* cfg) {
         lwlog_crit("ERROR: Can't create umem \"%s\"", strerror(errno));
         exit(EXIT_FAILURE);
     }
+
+    // Create socket in peer interface
+
+    char* peer_ifname = calloc(1, IFNAMSIZ);
+    snprintf(peer_ifname, IFNAMSIZ, "%s_peer", cfg->ifname);
+    cfg->ifname = peer_ifname;
+    cfg->ifindex = if_nametoindex(cfg->ifname);
 
     xsk = xsk_configure_socket(cfg, umem);
     return xsk;

@@ -65,12 +65,27 @@ static void stats_print(struct stats_record* stats_rec, struct stats_record* sta
         printf(fmt, "       TX:", stats_rec->tx_packets, pps, stats_rec->tx_bytes / 1000, bps, period);
         printf("\n");
     }
-    printf(".");
 }
 
 void* stats_poll(void* arg) {
     unsigned int interval = 2;
     struct poll_arg* poll_arg = arg;
+
+    if (!poll_arg) {
+        lwlog_err("ERROR: Invalid poll_arg");
+        return NULL;
+    }
+
+    if (!poll_arg->xsk) {
+        lwlog_err("ERROR: Invalid xsk");
+        return NULL;
+    }
+
+    if (!poll_arg->global_exit) {
+        lwlog_err("ERROR: Invalid global_exit");
+        return NULL;
+    }
+
     struct xsk_socket_info* xsk = poll_arg->xsk;
     volatile bool* global_exit = poll_arg->global_exit;
     static struct stats_record previous_stats = {0};

@@ -43,8 +43,6 @@ int xdp_sock_prog(struct xdp_md* ctx) {
 
     if (iph->protocol != IPPROTO_ICMP)
         return XDP_PASS;
-    struct bpf_fib_lookup fib_params = {};
-
     bpf_printk("AF_XDP socket program-------------");
 
     bpf_printk("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_source[0], eth->h_source[1], eth->h_source[2],

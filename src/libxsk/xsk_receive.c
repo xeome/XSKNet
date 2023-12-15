@@ -5,7 +5,6 @@
 #include <linux/icmp.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
-#include <linux/in.h>
 
 #include "libxsk.h"
 #include "lwlog.h"
@@ -138,14 +137,10 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
      * faster if you do batch processing/transmission */
     ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
     if (ret != 1) {
-        /* No more transmit slots, drop the packet */
         lwlog_warning("Dropping packet due to lack of transmit slots");
         return false;
     }
 
-    /*
-
-    */
     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
     xsk_ring_prod__submit(&xsk->tx, 1);

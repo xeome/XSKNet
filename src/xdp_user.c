@@ -4,14 +4,11 @@
 #include <net/if.h>
 #include <sys/resource.h>
 #include <pthread.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <string.h>
 
 #include "libxsk.h"
 #include "lwlog.h"
 #include "flags.h"
+#include "xdp_user.h"
 
 static bool global_exit;
 
@@ -20,17 +17,13 @@ static struct config cfg = {
     .unload_all = true,
 };
 
+struct tx_if egress = {
+    .ifindex = -1,
+    .mac = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+};
+
 static const char* __doc__ = "AF_XDP kernel bypass example, User App\n";
 
-const struct option_wrapper long_options[] = {
-    {{"help", no_argument, NULL, 'h'}, "Show help", false},
-    {{"dev", required_argument, NULL, 'd'}, "Operate on device <ifname>", "<ifname>", true},
-    {{"poll-mode", no_argument, NULL, 'p'}, "Use the poll() API waiting for packets to arrive"},
-    {{"quiet", no_argument, NULL, 'q'}, "Quiet mode (no output)"},
-    {{0, 0, NULL, 0}, NULL, false}};
-
-void request_port();
-void request_port_deletion();
 void sigint_handler(int signal) {
     global_exit = true;
     lwlog_info("Exiting XDP Daemon");
@@ -47,28 +40,8 @@ int main(int argc, char** argv) {
     lwlog_info("Starting XDP User client");
 
     /* Request veth creation and XDP program loading from daemon */
-    request_port();
-
-    /* Allow unlimited locking of memory, so all memory needed for packet
-     * buffers can be locked.
-     */
-    struct rlimit rlim = {RLIM_INFINITY, RLIM_INFINITY};
-    if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
-        lwlog_err("ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    char* veth_peer_name = malloc(sizeof(char) * IFNAMSIZ);
-    if (veth_peer_name == NULL) {
-        lwlog_err("ERROR: Couldn't allocate memory for veth peer name");
-        exit(EXIT_FAILURE);
-    }
-
-    int original_ifindex = if_nametoindex(cfg.ifname);
-    snprintf(veth_peer_name, IFNAMSIZ, "%s_peer", cfg.ifname);
-    char* ifname_orig = strdup(cfg.ifname);
-    cfg.ifindex = if_nametoindex(veth_peer_name);
-    cfg.ifname = veth_peer_name;
+    request_port(cfg.ifname);
+    set_memory_limit();
 
     /* Create AF_XDP socket */
     struct xsk_socket_info* xsk_socket;
@@ -80,12 +53,10 @@ int main(int argc, char** argv) {
 
     /* Start statistics thread (non-blocking) */
     pthread_t stats_poll_thread;
-
     struct poll_arg poll_arg = {
         .xsk = xsk_socket,
         .global_exit = &global_exit,
     };
-
     err = pthread_create(&stats_poll_thread, NULL, stats_poll, &poll_arg);
     if (err) {
         lwlog_crit("ERROR: Failed creating stats thread \"%s\"\n", strerror(errno));
@@ -101,49 +72,79 @@ int main(int argc, char** argv) {
     pthread_join(stats_poll_thread, NULL);
 
     /* Cleanup */
+
+    cleanup(xsk_socket);
+
+    lwlog_info("Exiting XDP User client");
+    return 0;
+}
+
+void request_port(char* ifname) {
+    if (!ifname) {
+        lwlog_err("ERROR: Invalid interface name");
+        exit(EXIT_FAILURE);
+    }
+
+    char msg[1024];
+    int ret = snprintf(msg, sizeof(msg), "create_port %s", ifname);
+    if (ret < 0 || ret >= sizeof(msg)) {
+        lwlog_err("ERROR: Failed to format message");
+        exit(EXIT_FAILURE);
+    }
+
+    char* response = send_to_daemon(msg);
+    if (response == NULL) {
+        lwlog_err("ERROR: Failed to send message to daemon");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void request_port_deletion(char* ifname) {
+    if (!ifname) {
+        lwlog_err("ERROR: Invalid interface name");
+        exit(EXIT_FAILURE);
+    }
+
+    char msg[1024];
+    int ret = snprintf(msg, sizeof(msg), "delete_port %s", ifname);
+    if (ret < 0 || ret >= sizeof(msg)) {
+        lwlog_err("ERROR: Failed to format message");
+        exit(EXIT_FAILURE);
+    }
+
+    char* response = send_to_daemon(msg);
+    if (response == NULL) {
+        lwlog_err("ERROR: Failed to send message to daemon");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void cleanup(struct xsk_socket_info* xsk_socket) {
     xsk_socket__delete(xsk_socket->xsk);
     lwlog_info("XSK socket deleted");
-    err = xsk_umem__delete(xsk_socket->umem->umem);
+
+    int err = xsk_umem__delete(xsk_socket->umem->umem);
     if (err) {
         lwlog_crit("ERROR: Can't destroy umem \"%s\"", strerror(errno));
         exit(EXIT_FAILURE);
     }
     lwlog_info("UMEM destroyed");
 
-    cfg.ifname = ifname_orig;
-    /* Request veth deletion and XDP program unloading from daemon */
-    request_port_deletion();
+    // remove last 5 characters from ifname to get the veth name (test_peer -> test)
+    char* veth_name = calloc(1, IFNAMSIZ);
+    snprintf(veth_name, IFNAMSIZ, "%.*s", (int)strlen(cfg.ifname) - 5, cfg.ifname);
+    lwlog_info("Deleting veth pair: %s", veth_name);
 
-    lwlog_info("Exiting XDP User client");
-    return 0;
+    request_port_deletion(veth_name);
 }
 
-void request_port() {
-    char msg[1024];
-    int ret = snprintf(msg, sizeof(msg), "create_port %s", cfg.ifname);
-    if (ret < 0 || ret >= sizeof(msg)) {
-        lwlog_err("ERROR: Failed to format message");
-        exit(EXIT_FAILURE);
-    }
-
-    char* response = send_to_daemon(msg);
-    if (response == NULL) {
-        lwlog_err("ERROR: Failed to send message to daemon");
-        exit(EXIT_FAILURE);
-    }
-}
-
-void request_port_deletion() {
-    char msg[1024];
-    int ret = snprintf(msg, sizeof(msg), "delete_port %s", cfg.ifname);
-    if (ret < 0 || ret >= sizeof(msg)) {
-        lwlog_err("ERROR: Failed to format message");
-        exit(EXIT_FAILURE);
-    }
-
-    char* response = send_to_daemon(msg);
-    if (response == NULL) {
-        lwlog_err("ERROR: Failed to send message to daemon");
+/* Allow unlimited locking of memory, so all memory needed for packet
+ * buffers can be locked.
+ */
+static void set_memory_limit() {
+    struct rlimit rlim = {RLIM_INFINITY, RLIM_INFINITY};
+    if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
+        lwlog_err("ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 }

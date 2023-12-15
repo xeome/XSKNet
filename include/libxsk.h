@@ -93,3 +93,8 @@ struct xsk_socket_info {
 };
 
 struct xsk_socket_info* init_xsk_socket(struct config* cfg);
+
+struct tx_if {
+    __u8 ifindex;
+    __u8 mac[6];
+};
