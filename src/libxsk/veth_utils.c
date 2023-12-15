@@ -60,7 +60,7 @@ void create_veth(const char* veth_outer, const char* veth_inner) {
     char cmd[1024];
     sprintf(cmd, "./testenv/create_veth.sh %s %s", veth_outer, veth_inner);
     lwlog_info("Running command: %s", cmd);
-    int err = system(cmd);
+    const int err = system(cmd);
     if (err) {
         lwlog_err("Couldn't create veth pair: (%d)", err);
     }
@@ -80,7 +80,7 @@ void delete_veth(const char* veth_outer) {
 
     char cmd[1024];
     sprintf(cmd, "./testenv/delete_veth.sh %s", veth_outer);
-    int err = system(cmd);
+    const int err = system(cmd);
     if (err) {
         lwlog_err("Couldn't delete veth pair: (%d)", err);
     }

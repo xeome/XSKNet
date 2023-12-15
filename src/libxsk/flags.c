@@ -10,7 +10,6 @@
 
 #include "libxsk.h"
 #include "flags.h"
-#include "lwlog.h"
 
 int verbose = 1;
 

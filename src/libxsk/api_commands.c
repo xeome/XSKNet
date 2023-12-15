@@ -277,7 +277,7 @@ void create_port(const void* arg) {
     }
 
     const char* prefix = arg;
-    int index = add_to_veth_list(prefix);
+    const int index = add_to_veth_list(prefix);
     if (index == -1) {
         lwlog_err("Couldn't add %s to veth list", prefix);
         return;
@@ -302,7 +302,7 @@ void delete_port(const void* arg) {
     }
 
     const char* prefix = arg;
-    struct veth_pair* pair = get_pair(prefix);
+    const struct veth_pair* pair = get_pair(prefix);
     if (pair == NULL) {
         lwlog_err("Couldn't find veth pair with prefix %s", prefix);
         return;

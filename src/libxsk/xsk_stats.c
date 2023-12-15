@@ -22,9 +22,8 @@ static uint64_t gettime(void) {
 
 static double calc_period(const struct stats_record* r, const struct stats_record* p) {
     double period_ = 0;
-    __u64 period = 0;
 
-    period = r->timestamp - p->timestamp;
+    const __u64 period = r->timestamp - p->timestamp;
     if (period > 0)
         period_ = ((double)period / NANOSEC_PER_SEC);
 

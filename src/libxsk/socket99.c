@@ -33,10 +33,10 @@
 #define DEF_BACKLOG_SIZE SOMAXCONN  // very backlog. wow.
 
 static bool set_defaults_and_check_cfg(socket99_config* cfg);
-static bool make_tcp_udp(socket99_config* cfg, socket99_result* out);
-static bool make_unixdomain(socket99_config* cfg, socket99_result* out);
+static bool make_tcp_udp(const socket99_config* cfg, socket99_result* out);
+static bool make_unixdomain(const socket99_config* cfg, socket99_result* out);
 static bool set_nonblocking(socket99_result* out);
-static bool set_socket_options(socket99_config* cfg, socket99_result* out, int fd);
+static bool set_socket_options(const socket99_config* cfg, socket99_result* out, int fd);
 static const char* status_key(enum socket99_status s);
 
 /* Attempt to open a socket, according to the configuration stored in
@@ -76,7 +76,7 @@ bool socket99_open(socket99_config* cfg, socket99_result* res) {
  * in *RES. This has the same return value and general behavior
  * as snprintf -- if the return value is >= buf_size, the string
  * has been truncated. Returns -1 if either BUF or RES are NULL. */
-int socket99_snprintf(char* buf, size_t buf_size, socket99_result* res) {
+int socket99_snprintf(char* buf, size_t buf_size, const socket99_result* res) {
     if (buf == NULL || res == NULL) {
         return 0;
     }
@@ -86,7 +86,7 @@ int socket99_snprintf(char* buf, size_t buf_size, socket99_result* res) {
 }
 
 /* Print an error message based on the status contained in *RES. */
-void socket99_fprintf(FILE* f, socket99_result* res) {
+void socket99_fprintf(FILE* f, const socket99_result* res) {
     if (f == NULL || res == NULL) {
         return;
     }
@@ -95,7 +95,7 @@ void socket99_fprintf(FILE* f, socket99_result* res) {
 }
 
 /* Set "hints" in an addrinfo struct, to be passed to getaddrinfo. */
-void socket99_set_hints(socket99_config* cfg, struct addrinfo* hints) {
+void socket99_set_hints(const socket99_config* cfg, struct addrinfo* hints) {
     if (cfg == NULL || hints == NULL) {
         return;
     }
@@ -147,8 +147,8 @@ static bool fail_with_errno(socket99_result* out, enum socket99_status status) {
     return false;
 }
 
-static bool make_unixdomain(socket99_config* cfg, socket99_result* out) {
-    int fd = socket(AF_UNIX, cfg->datagram ? SOCK_DGRAM : SOCK_STREAM, 0);
+static bool make_unixdomain(const socket99_config* cfg, socket99_result* out) {
+    const int fd = socket(AF_UNIX, cfg->datagram ? SOCK_DGRAM : SOCK_STREAM, 0);
     if (fd == -1) {
         return fail_with_errno(out, SOCKET99_ERROR_SOCKET);
     }
@@ -157,12 +157,11 @@ static bool make_unixdomain(socket99_config* cfg, socket99_result* out) {
         return false;
     }
 
-    struct sockaddr_un sun;
-    memset(&sun, 0, sizeof(sun));
+    struct sockaddr_un sun = {0};
     sun.sun_family = AF_UNIX;
-    size_t name_max = sizeof(sun.sun_path);
+    const size_t name_max = sizeof(sun.sun_path);
 
-    int snprintf_res = snprintf(sun.sun_path, name_max, "%s", cfg->path);
+    const int snprintf_res = snprintf(sun.sun_path, name_max, "%s", cfg->path);
     if ((int)name_max < snprintf_res) {
         return fail_with_errno(out, SOCKET99_ERROR_SNPRINTF);
     }
@@ -191,13 +190,12 @@ static bool make_unixdomain(socket99_config* cfg, socket99_result* out) {
 
 #define PORT_STR_BUFSZ 6
 
-static bool make_tcp_udp(socket99_config* cfg, socket99_result* out) {
+static bool make_tcp_udp(const socket99_config* cfg, socket99_result* out) {
     struct addrinfo hints;
     struct addrinfo* res = NULL;
 
     int fd = -1;
-    char port_str[PORT_STR_BUFSZ];
-    memset(port_str, 0, PORT_STR_BUFSZ);
+    char port_str[PORT_STR_BUFSZ] = {0};
 
     socket99_set_hints(cfg, &hints);
 
@@ -205,8 +203,8 @@ static bool make_tcp_udp(socket99_config* cfg, socket99_result* out) {
         return fail_with_errno(out, SOCKET99_ERROR_SNPRINTF);
     }
 
-    struct addrinfo* ai = NULL;
-    int addr_res = getaddrinfo(cfg->host, port_str, &hints, &res);
+    const struct addrinfo* ai = NULL;
+    const int addr_res = getaddrinfo(cfg->host, port_str, &hints, &res);
     if (addr_res != 0) {
         out->getaddrinfo_error = addr_res;
         freeaddrinfo(res);
@@ -229,14 +227,14 @@ static bool make_tcp_udp(socket99_config* cfg, socket99_result* out) {
         }
 
         if (cfg->server) {
-            int bind_res = bind(fd, res->ai_addr, res->ai_addrlen);
+            const int bind_res = bind(fd, res->ai_addr, res->ai_addrlen);
             if (bind_res == -1) {
                 freeaddrinfo(res);
                 return fail_with_errno(out, SOCKET99_ERROR_BIND);
             }
 
             if (!cfg->datagram) {
-                int listen_res = listen(fd, cfg->backlog_size);
+                const int listen_res = listen(fd, cfg->backlog_size);
                 if (listen_res == -1) {
                     freeaddrinfo(res);
                     return fail_with_errno(out, SOCKET99_ERROR_LISTEN);
@@ -248,7 +246,7 @@ static bool make_tcp_udp(socket99_config* cfg, socket99_result* out) {
                 break;
             }
 
-            int connect_res = connect(fd, ai->ai_addr, ai->ai_addrlen);
+            const int connect_res = connect(fd, ai->ai_addr, ai->ai_addrlen);
             if (connect_res == 0) {
                 break;
             } else {
@@ -280,7 +278,7 @@ static bool make_tcp_udp(socket99_config* cfg, socket99_result* out) {
 }
 
 static bool set_nonblocking(socket99_result* out) {
-    int flags = fcntl(out->fd, F_GETFL, 0);
+    const int flags = fcntl(out->fd, F_GETFL, 0);
     if (flags == -1) {
         return fail_with_errno(out, SOCKET99_ERROR_FCNTL);
     }
@@ -290,9 +288,9 @@ static bool set_nonblocking(socket99_result* out) {
     return true;
 }
 
-static bool set_socket_options(socket99_config* cfg, socket99_result* out, int fd) {
+static bool set_socket_options(const socket99_config* cfg, socket99_result* out, int fd) {
     for (int i = 0; i < SOCKET99_MAX_SOCK_OPTS; i++) {
-        socket99_sockopt* opt = &cfg->sockopts[i];
+        const socket99_sockopt* opt = &cfg->sockopts[i];
         if (opt->option_id == 0) {
             break;
         }

@@ -94,10 +94,10 @@ bool socket99_open(socket99_config* cfg, socket99_result* res);
  * in *RES. This has the same return value and general behavior
  * as snprintf -- if the return value is >= buf_size, the string
  * has been truncated, but will be '\0'-terminated. */
-int socket99_snprintf(char* buf, size_t buf_size, socket99_result* res);
+int socket99_snprintf(char* buf, size_t buf_size, const socket99_result* res);
 
 /* Print an error message based on the status contained in *RES. */
-void socket99_fprintf(FILE* f, socket99_result* res);
+void socket99_fprintf(FILE* f, const socket99_result* res);
 
 /* Set "hints" in an addrinfo struct, to be passed to getaddrinfo. */
-void socket99_set_hints(socket99_config* cfg, struct addrinfo* hints);
+void socket99_set_hints(const socket99_config* cfg, struct addrinfo* hints);
