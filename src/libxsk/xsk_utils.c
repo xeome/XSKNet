@@ -10,14 +10,11 @@
 #endif
 
 static struct xsk_umem_info* configure_xsk_umem(void* buffer, uint64_t size) {
-    struct xsk_umem_info* umem;
-    int ret;
-
-    umem = calloc(1, sizeof(*umem));
+    struct xsk_umem_info* umem = calloc(1, sizeof(*umem));
     if (!umem)
         return NULL;
 
-    ret = xsk_umem__create(&umem->umem, buffer, size, &umem->fq, &umem->cq, NULL);
+    const int ret = xsk_umem__create(&umem->umem, buffer, size, &umem->fq, &umem->cq, NULL);
     if (ret) {
         errno = -ret;
         return NULL;
@@ -28,24 +25,21 @@ static struct xsk_umem_info* configure_xsk_umem(void* buffer, uint64_t size) {
 }
 
 static uint64_t xsk_alloc_umem_frame(struct xsk_socket_info* xsk) {
-    uint64_t frame;
     if (xsk->umem_frame_free == 0)
         return INVALID_UMEM_FRAME;
 
-    frame = xsk->umem_frame_addr[--xsk->umem_frame_free];
+    const uint64_t frame = xsk->umem_frame_addr[--xsk->umem_frame_free];
     xsk->umem_frame_addr[xsk->umem_frame_free] = INVALID_UMEM_FRAME;
     return frame;
 }
 
-static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct xsk_umem_info* umem) {
+static struct xsk_socket_info* xsk_configure_socket(const struct config* cfg, struct xsk_umem_info* umem) {
     struct xsk_socket_config xsk_cfg;
-    struct xsk_socket_info* xsk_info;
     struct bpf_map_info info = {0};
     uint32_t idx;
     int i;
-    int ret;
 
-    xsk_info = calloc(1, sizeof(*xsk_info));
+    struct xsk_socket_info* xsk_info = calloc(1, sizeof(*xsk_info));
     if (!xsk_info)
         return NULL;
 
@@ -55,10 +49,10 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
     xsk_cfg.xdp_flags = cfg->xdp_flags;
     xsk_cfg.bind_flags = cfg->xsk_bind_flags;
     xsk_cfg.libbpf_flags = XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD;
-
     lwlog_info("Creating AF_XDP socket on %s ifindex %d", cfg->ifname, cfg->ifindex);
     /* Create the AF_XDP socket */
-    ret = xsk_socket__create(&xsk_info->xsk, cfg->ifname, cfg->xsk_if_queue, umem->umem, &xsk_info->rx, &xsk_info->tx, &xsk_cfg);
+    int ret =
+        xsk_socket__create(&xsk_info->xsk, cfg->ifname, cfg->xsk_if_queue, umem->umem, &xsk_info->rx, &xsk_info->tx, &xsk_cfg);
     if (ret) {
         lwlog_crit("ERROR: Can't create xsk socket \"%s\"", strerror(errno));
         goto error_exit;
@@ -66,7 +60,7 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
 
     char pin_dir[PATH_MAX];
     /* Use the --dev name as subdir for finding pinned maps */
-    int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, cfg->ifname);
+    const int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, cfg->ifname);
     if (len < 0) {
         fprintf(stderr, "ERR: creating pin dirname\n");
         return NULL;
@@ -74,7 +68,7 @@ static struct xsk_socket_info* xsk_configure_socket(struct config* cfg, struct x
 
     /* Get xsk_map fd from pinned map */
 
-    int xsk_map_fd = open_bpf_map_file(pin_dir, "xsks_map", &info);
+    const int xsk_map_fd = open_bpf_map_file(pin_dir, "xsks_map", &info);
     if (xsk_map_fd < 0) {
         lwlog_crit("ERROR: Can't open xskmap \"%s\"", strerror(errno));
         goto error_exit;
@@ -114,16 +108,12 @@ error_exit:
 }
 
 struct xsk_socket_info* init_xsk_socket(struct config* cfg) {
-    int ret;
-    struct xsk_umem_info* umem;
-    struct xsk_socket_info* xsk;
     void* buffer;
-    uint64_t size;
 
-    size = NUM_FRAMES * FRAME_SIZE;
+    const uint64_t size = NUM_FRAMES * FRAME_SIZE;
 
     /* Allocate memory for NUM_FRAMES of the default XDP frame size */
-    ret = posix_memalign(&buffer, getpagesize(), size);
+    const int ret = posix_memalign(&buffer, getpagesize(), size);
     if (ret) {
         errno = -ret;
         lwlog_crit("ERROR: Can't allocate buffer memory: %s", strerror(errno));
@@ -131,7 +121,7 @@ struct xsk_socket_info* init_xsk_socket(struct config* cfg) {
     }
 
     /* Initialize shared packet_buffer for umem usage */
-    umem = configure_xsk_umem(buffer, size);
+    struct xsk_umem_info* umem = configure_xsk_umem(buffer, size);
     if (umem == NULL) {
         errno = -ret;
         lwlog_crit("ERROR: Can't create umem \"%s\"", strerror(errno));
@@ -139,12 +129,11 @@ struct xsk_socket_info* init_xsk_socket(struct config* cfg) {
     }
 
     // Create socket in peer interface
-
     char* peer_ifname = calloc(1, IFNAMSIZ);
     snprintf(peer_ifname, IFNAMSIZ, "%s_peer", cfg->ifname);
     cfg->ifname = peer_ifname;
     cfg->ifindex = if_nametoindex(cfg->ifname);
 
-    xsk = xsk_configure_socket(cfg, umem);
+    struct xsk_socket_info* xsk = xsk_configure_socket(cfg, umem);
     return xsk;
 }

@@ -75,3 +75,4 @@ config.mk
 .vscode/*
 bin/*
 obj/*
+.idea

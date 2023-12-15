@@ -22,12 +22,11 @@
  * @return The address of the allocated frame, or INVALID_UMEM_FRAME if no frames could be allocated.
  */
 static uint64_t xsk_alloc_umem_frame(struct xsk_socket_info* xsk) {
-    uint64_t frame;
     if (xsk->umem_frame_free == 0)
         return INVALID_UMEM_FRAME;
 
     // Decrement the free frame count and return the address of the frame
-    frame = xsk->umem_frame_addr[--xsk->umem_frame_free];
+    const uint64_t frame = xsk->umem_frame_addr[--xsk->umem_frame_free];
     // Mark the frame as invalid
     xsk->umem_frame_addr[xsk->umem_frame_free] = INVALID_UMEM_FRAME;
     return frame;
@@ -40,12 +39,11 @@ static void xsk_free_umem_frame(struct xsk_socket_info* xsk, uint64_t frame) {
     xsk->umem_frame_addr[xsk->umem_frame_free++] = frame;
 }
 
-static uint64_t xsk_umem_free_frames(struct xsk_socket_info* xsk) {
+static uint64_t xsk_umem_free_frames(const struct xsk_socket_info* xsk) {
     return xsk->umem_frame_free;
 }
 
 static void complete_tx(struct xsk_socket_info* xsk) {
-    unsigned int completed;
     uint32_t idx_cq;
 
     if (!xsk->outstanding_tx)
@@ -55,7 +53,7 @@ static void complete_tx(struct xsk_socket_info* xsk) {
     sendto(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
 
     /* Collect/free completed TX buffers */
-    completed = xsk_ring_cons__peek(&xsk->umem->cq, XSK_RING_CONS__DEFAULT_NUM_DESCS, &idx_cq);
+    const unsigned int completed = xsk_ring_cons__peek(&xsk->umem->cq, XSK_RING_CONS__DEFAULT_NUM_DESCS, &idx_cq);
 
     if (completed <= 0)
         return;
@@ -69,7 +67,7 @@ static void complete_tx(struct xsk_socket_info* xsk) {
     xsk->outstanding_tx -= completed < xsk->outstanding_tx ? completed : xsk->outstanding_tx;
 }
 
-static inline void csum_replace2(uint16_t* sum, uint16_t old, uint16_t new) {
+static inline void csum_replace2(uint16_t* sum, const uint16_t old, const uint16_t new) {
     uint16_t csum = ~*sum;  // 1's complement of the checksum (flip all the bits)
 
     csum += ~old;                   // Subtract the old value from the checksum
@@ -81,7 +79,7 @@ static inline void csum_replace2(uint16_t* sum, uint16_t old, uint16_t new) {
     *sum = ~csum;  // 1's complement of the checksum
 }
 
-static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, struct tx_if* egress) {
+static bool process_packet(const struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, const struct tx_if* egress) {
     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     errno = 0;
@@ -180,20 +178,19 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     return false;
 }
 
-static void handle_receive_packets(struct xsk_socket_info* xsk, struct tx_if* egress) {
-    unsigned int rcvd, stock_frames, i;
+static void handle_receive_packets(struct xsk_socket_info* xsk, const struct tx_if* egress) {
+    unsigned int i;
     uint32_t idx_rx = 0, idx_fq = 0;
-    int ret;
 
-    rcvd = xsk_ring_cons__peek(&xsk->rx, RX_BATCH_SIZE, &idx_rx);
+    const unsigned int rcvd = xsk_ring_cons__peek(&xsk->rx, RX_BATCH_SIZE, &idx_rx);
     if (!rcvd)
         return;
 
     /* Stuff the ring with as much frames as possible */
-    stock_frames = xsk_prod_nb_free(&xsk->umem->fq, xsk_umem_free_frames(xsk));
+    const unsigned int stock_frames = xsk_prod_nb_free(&xsk->umem->fq, xsk_umem_free_frames(xsk));
 
     if (stock_frames > 0) {
-        ret = xsk_ring_prod__reserve(&xsk->umem->fq, stock_frames, &idx_fq);
+        int ret = xsk_ring_prod__reserve(&xsk->umem->fq, stock_frames, &idx_fq);
 
         /* This should not happen, but just in case
          * Wait until we can reserve enough space in the fill queue
@@ -211,8 +208,8 @@ static void handle_receive_packets(struct xsk_socket_info* xsk, struct tx_if* eg
     /* Process received packets */
     for (i = 0; i < rcvd; i++) {
         /* Get the address of the frame from the rx ring */
-        uint64_t addr = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx)->addr;
-        uint32_t len = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++)->len;
+        const uint64_t addr = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx)->addr;
+        const uint32_t len = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++)->len;
 
         /* If the packet was not processed correctly or does not need to be transmitted, free the frame */
         if (!process_packet(xsk, addr, len, egress))
@@ -229,14 +226,13 @@ static void handle_receive_packets(struct xsk_socket_info* xsk, struct tx_if* eg
 }
 
 void get_mac_address(unsigned char* mac_addr, const char* ifname) {
-    int fd;
     struct ifreq ifr;
     if (ifname == NULL) {
         lwlog_err("ERROR: Couldn't get interface name from index");
         exit(EXIT_FAILURE);
     }
 
-    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    const int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd == -1) {
         lwlog_err("ERROR: Couldn't create socket");
         exit(EXIT_FAILURE);
@@ -255,9 +251,8 @@ void get_mac_address(unsigned char* mac_addr, const char* ifname) {
     memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, 6);
 }
 
-void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool* global_exit, struct tx_if* egress) {
+void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, const bool* global_exit, struct tx_if* egress) {
     struct pollfd fds[2];
-    int ret, nfds = 1;
 
     get_mac_address(egress->mac, phy_ifname);
 
@@ -266,11 +261,10 @@ void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool
     fds[0].events = POLLIN;
 
     while (!*global_exit) {
-        if (cfg->xsk_poll_mode) {
-            ret = poll(fds, nfds, -1);
-            if (ret <= 0 || ret > 1)
-                continue;
-        }
+        const int nfds = 1;
+        const int ret = poll(fds, nfds, -1);
+        if (ret <= 0 || ret > 1)
+            continue;
         handle_receive_packets(xsk_socket, egress);
     }
 }

@@ -5,9 +5,7 @@
 #include <string.h>     /* strerror */
 #include <net/if.h>     /* IF_NAMESIZE */
 #include <errno.h>
-#include <errno.h>
 #include <bpf/bpf.h>
-#include <bpf/libbpf.h>
 #include <xdp/libxdp.h>
 
 #include <linux/if_link.h> /* Need XDP flags */
@@ -84,10 +82,8 @@ struct bpf_object *load_bpf_object_file_reuse_maps(const char *file,
 }
 #endif
 
-struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg) {
+struct xdp_program* load_bpf_and_xdp_attach(const struct config* cfg) {
     /* In next assignment this will be moved into ../common/ */
-    int prog_fd = -1;
-    int err;
 
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
     DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
@@ -96,12 +92,8 @@ struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg) {
     xdp_opts.prog_name = cfg->progname;
     xdp_opts.opts = &opts;
 
-    /* If flags indicate hardware offload, supply ifindex */
-    /* if (cfg->xdp_flags & XDP_FLAGS_HW_MODE) */
-    /* 	offload_ifindex = cfg->ifindex; */
-
     struct xdp_program* prog = xdp_program__create(&xdp_opts);
-    err = libxdp_get_error(prog);
+    int err = libxdp_get_error(prog);
     if (err) {
         char errmsg[1024];
         libxdp_strerror(err, errmsg, sizeof(errmsg));
@@ -123,7 +115,7 @@ struct xdp_program* load_bpf_and_xdp_attach(struct config* cfg) {
     if (err)
         exit(err);
 
-    prog_fd = xdp_program__fd(prog);
+    const int prog_fd = xdp_program__fd(prog);
     if (prog_fd < 0) {
         lwlog_err("ERR: xdp_program__fd failed: %s\n", strerror(errno));
         exit(EXIT_FAIL_BPF);
@@ -183,23 +175,22 @@ int check_map_fd_info(const struct bpf_map_info* info, const struct bpf_map_info
 
 int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_info* info) {
     char filename[PATH_MAX];
-    int err, len, fd;
     __u32 info_len = sizeof(*info);
 
-    len = snprintf(filename, PATH_MAX, "%s/%s", pin_dir, mapname);
+    const int len = snprintf(filename, PATH_MAX, "%s/%s", pin_dir, mapname);
     if (len < 0) {
         fprintf(stderr, "ERR: constructing full mapname path\n");
         return -1;
     }
 
-    fd = bpf_obj_get(filename);
+    const int fd = bpf_obj_get(filename);
     if (fd < 0) {
         lwlog_err("WARN: Failed to open bpf map file:%s err(%d):%s\n", filename, errno, strerror(errno));
         return fd;
     }
 
     if (info) {
-        err = bpf_obj_get_info_by_fd(fd, info, &info_len);
+        const int err = bpf_obj_get_info_by_fd(fd, info, &info_len);
         if (err) {
             lwlog_err("ERR: %s() can't get info - %s\n", __func__, strerror(errno));
 
@@ -214,9 +205,9 @@ int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_i
 int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir, char* map_name) {
     char map_filename[PATH_MAX];
     char pin_dir[PATH_MAX];
-    int err, len;
+    int err;
 
-    len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, subdir);
+    int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, subdir);
     if (len < 0) {
         lwlog_err("ERR: creating pin dirname");
         return EXIT_FAIL_OPTION;
@@ -250,56 +241,61 @@ int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir, char*
     return 0;
 }
 
-int load_xdp_program(struct config* cfg, struct xdp_program* prog, char* map_name) {
-    int err;
-    char errmsg[1024];
+int load_xdp_program(const struct config* cfg, struct xdp_program* prog, char* map_name) {
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
     DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
-    if (cfg->filename[0] != 0) {
-        xdp_opts.open_filename = cfg->filename;
-        xdp_opts.prog_name = cfg->progname;
-        xdp_opts.opts = &opts;
+    if (!cfg->filename) {
+        lwlog_err("No filename specified");
+        return -1;
+    }
 
-        if (cfg->progname[0] != 0) {
-            prog = xdp_program__create(&xdp_opts);
-        } else {
-            prog = xdp_program__open_file(cfg->filename, NULL, &opts);
-        }
+    if (!cfg->ifname) {
+        lwlog_err("No interface name specified");
+        return -1;
+    }
 
-        err = libxdp_get_error(prog);
-        if (err) {
-            libxdp_strerror(err, errmsg, sizeof(errmsg));
-            lwlog_err("ERR: loading program: %s", errmsg);
-            return err;
-        }
+    char errmsg[1024];
+    xdp_opts.open_filename = cfg->filename;
+    xdp_opts.prog_name = cfg->progname;
+    xdp_opts.opts = &opts;
+    if (!cfg->progname) {
+        prog = xdp_program__create(&xdp_opts);
+    } else {
+        prog = xdp_program__open_file(cfg->filename, NULL, &opts);
+    }
 
-        lwlog_info("Loading XDP program from %s to ifindex %d and ifname %s", cfg->filename, cfg->ifindex, cfg->ifname);
-        err = xdp_program__attach(prog, cfg->ifindex, cfg->attach_mode, 0);
-        if (err) {
-            libxdp_strerror(err, errmsg, sizeof(errmsg));
-            lwlog_err("Couldn't attach XDP program on iface '%s' : %s (%d)", cfg->ifname, errmsg, err);
-            return err;
-        }
+    int err = libxdp_get_error(prog);
+    if (err) {
+        libxdp_strerror(err, errmsg, sizeof(errmsg));
+        lwlog_err("ERR: loading program: %s", errmsg);
+        return err;
+    }
 
-        if (map_name == NULL) {
-            lwlog_info("No map name specified for %s, not pinning maps", cfg->ifname);
-            return 0;
-        }
+    lwlog_info("Loading XDP program from %s to ifindex %d and ifname %s", cfg->filename, cfg->ifindex, cfg->ifname);
+    err = xdp_program__attach(prog, cfg->ifindex, cfg->attach_mode, 0);
+    if (err) {
+        libxdp_strerror(err, errmsg, sizeof(errmsg));
+        lwlog_err("Couldn't attach XDP program on iface '%s' : %s (%d)", cfg->ifname, errmsg, err);
+        return err;
+    }
 
-        /* Pin the maps */
-        err = pin_maps_in_bpf_object(xdp_program__bpf_obj(prog), cfg->ifname, map_name);
-        if (err) {
-            lwlog_err("ERR: pinning maps in %s", cfg->ifname);
-            return err;
-        }
+    if (map_name == NULL) {
+        lwlog_info("No map name specified for %s, not pinning maps", cfg->ifname);
+        return 0;
+    }
+
+    /* Pin the maps */
+    err = pin_maps_in_bpf_object(xdp_program__bpf_obj(prog), cfg->ifname, map_name);
+    if (err) {
+        lwlog_err("ERR: pinning maps in %s", cfg->ifname);
+        return err;
     }
 
     return 0;
 }
 
-int do_unload(struct config* cfg) {
+int do_unload(const struct config* cfg) {
     struct xdp_multiprog* mp = NULL;
-    enum xdp_attach_mode mode;
     int err = EXIT_FAILURE;
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
 
@@ -320,6 +316,7 @@ int do_unload(struct config* cfg) {
             goto defer;
         }
     } else {
+        enum xdp_attach_mode mode;
         struct xdp_program* prog = NULL;
 
         while ((prog = xdp_multiprog__next_prog(prog, mp))) {

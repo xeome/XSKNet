@@ -4,7 +4,6 @@
 #define SOCKET99_VERSION_MINOR 2
 #define SOCKET99_VERSION_PATCH 2
 
-#include <stdint.h>
 #include <stdbool.h>
 #include <netdb.h>
 #include <stdio.h>

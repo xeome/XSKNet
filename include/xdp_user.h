@@ -9,6 +9,6 @@ const struct option_wrapper long_options[] = {
 void request_port(char* ifname);
 void request_port_deletion(char* ifname);
 
-void cleanup(struct xsk_socket_info* xsk_socket);
+void cleanup(const struct xsk_socket_info* xsk_socket);
 void start_stats_thread(struct xsk_socket_info* xsk_socket, pthread_t* stats_poll_thread);
 static void set_memory_limit();

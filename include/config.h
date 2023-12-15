@@ -4,23 +4,16 @@
 
 struct config {
     enum xdp_attach_mode attach_mode;
-    __u32 xdp_flags;
-    int ifindex;
+    __u16 xsk_bind_flags;
+    char* filename;
+    char* progname;
     char* ifname;
     char ifname_buf[IF_NAMESIZE];
-    int redirect_ifindex;
-    char* redirect_ifname;
-    char redirect_ifname_buf[IF_NAMESIZE];
-    bool do_unload;
-    __u32 prog_id;
-    bool reuse_maps;
-    char pin_dir[512];
-    char filename[512];
-    char progname[32];
-    unsigned char src_mac[6];
-    unsigned char dest_mac[6];
-    __u16 xsk_bind_flags;
     int xsk_if_queue;
-    bool xsk_poll_mode;
+    int ifindex;
+    int prog_id;
     bool unload_all;
+    bool do_unload;
+    __u32 xdp_flags;
 };
+void init_empty_config(struct config* cfg);

@@ -15,7 +15,7 @@
 #define PATH_MAX 4096
 #endif
 
-typedef void (*CommandHandler)(void*);
+typedef void (*CommandHandler)(const void*);
 
 typedef struct {
     char* command;
@@ -27,7 +27,7 @@ Command commands[] = {
     {"delete_port", delete_port},
 };
 
-char* send_to_daemon(char* msg) {
+char* send_to_daemon(const char* msg) {
     if (msg == NULL) {
         lwlog_err("msg is NULL");
         return NULL;
@@ -63,7 +63,7 @@ char* send_to_daemon(char* msg) {
         return NULL;
     }
 
-    ssize_t sent = send(res.fd, msg, strlen(msg), 0);
+    const ssize_t sent = send(res.fd, msg, strlen(msg), 0);
     if (sent == -1) {
         lwlog_err("send: %s", strerror(errno));
         close(res.fd);
@@ -72,7 +72,7 @@ char* send_to_daemon(char* msg) {
 
     fd.events = POLLIN;
     char buffer[1024] = {0};
-    ssize_t valread = recv(res.fd, buffer, sizeof(buffer) - 1, 0);
+    const ssize_t valread = recv(res.fd, buffer, sizeof(buffer) - 1, 0);
     if (valread == -1) {
         lwlog_err("recv: %s", strerror(errno));
         close(res.fd);
@@ -114,7 +114,7 @@ void* tcp_server_nonblocking(void* arg) {
 
     while (!*global_exit) {
         // Wait for incoming connections
-        int nready = poll(fds, 1, 3000);
+        const int nready = poll(fds, 1, 3000);
         if (nready < 0) {
             handle_error("poll failed");
             break;
@@ -126,7 +126,7 @@ void* tcp_server_nonblocking(void* arg) {
             // Accept new connection
             struct sockaddr_in client_addr;
             socklen_t client_len = sizeof(client_addr);
-            int client_fd = accept(res.fd, (struct sockaddr*)&client_addr, &client_len);
+            const int client_fd = accept(res.fd, (struct sockaddr*)&client_addr, &client_len);
             if (client_fd < 0) {
                 if (errno != EAGAIN) {
                     handle_error("accept failed");
@@ -145,7 +145,7 @@ void* tcp_server_nonblocking(void* arg) {
     return NULL;
 }
 
-void handle_client(int client_fd, bool* global_exit) {
+void handle_client(int client_fd, const bool* global_exit) {
     if (global_exit == NULL || *global_exit) {
         lwlog_info("Exiting TCP server");
         return;
@@ -162,7 +162,7 @@ void handle_client(int client_fd, bool* global_exit) {
         return;
     }
 
-    ssize_t received = recv(client_fd, buf, 1024 - 1, 0);
+    const ssize_t received = recv(client_fd, buf, 1024 - 1, 0);
     if (received <= 0) {
         if (received == 0) {
             lwlog_info("Client disconnected");
@@ -193,123 +193,53 @@ void handle_client(int client_fd, bool* global_exit) {
     free(buf);
 }
 
-static void load_config(char* veth_name, char* filename, bool peer) {
-    if (veth_name == NULL) {
-        lwlog_err("veth_name is NULL");
+static void load_pair_config(const struct veth_pair* pair) {
+    if (!pair) {
+        lwlog_err("pair is NULL");
         return;
     }
-
-    if (filename == NULL) {
-        lwlog_err("filename is NULL");
-        return;
-    }
-
-    char ifname[IFNAMSIZ];
-    if (peer) {
-        snprintf(ifname, IFNAMSIZ, "%s_peer", veth_name);
-    } else {
-        strncpy(ifname, veth_name, IFNAMSIZ);
-    }
+    lwlog_info("Loading XDP program on %s[%d] and %s[%d]", pair->veth_outer, pair->outer_ifindex, pair->veth_inner,
+               pair->inner_ifindex);
 
     struct config cfg = {
-        .ifindex = -1,
-        .unload_all = true,
-        .ifname = ifname,
+        .ifindex = pair->outer_ifindex,
+        .ifname = pair->veth_outer,
+        .filename = dummy_prog_path,
     };
-    strncpy(cfg.filename, filename, 512);
 
-    cfg.ifindex = if_nametoindex(ifname);
-    if (cfg.ifindex == 0) {
-        lwlog_err("Couldn't get ifindex for %s", ifname);
-        return;
+    if (load_xdp_program(&cfg, NULL, NULL) != 0) {
+        lwlog_err("Couldn't load XDP program on iface '%s'", cfg.ifname);
     }
 
-    if (load_xdp_program(&cfg, NULL, peer ? "xsks_map" : NULL) != 0) {
+    cfg.ifindex = pair->inner_ifindex;
+    cfg.ifname = pair->veth_inner;
+    cfg.filename = af_xdp_prog_path;
+    if (load_xdp_program(&cfg, NULL, "xsks_map") != 0) {
         lwlog_err("Couldn't load XDP program on iface '%s'", cfg.ifname);
     }
 }
 
-static void unload_config(char* veth_name, char* filename, bool peer) {
-    if (veth_name == NULL) {
-        lwlog_err("veth_name is NULL");
+static void unload_pair_config(const struct veth_pair* pair) {
+    if (!pair) {
+        lwlog_err("pair is NULL");
         return;
     }
 
-    if (filename == NULL) {
-        lwlog_err("filename is NULL");
-        return;
-    }
-
-    char ifname[IFNAMSIZ];
-    if (peer) {
-        snprintf(ifname, IFNAMSIZ, "%s_peer", veth_name);
-    } else {
-        strncpy(ifname, veth_name, IFNAMSIZ);
-    }
-
-    struct config cfg = {
-        .ifindex = -1,
-        .unload_all = true,
-        .ifname = ifname,
-    };
-    strncpy(cfg.filename, filename, 512);
-
-    cfg.ifindex = if_nametoindex(ifname);
-    if (cfg.ifindex == 0) {
-        lwlog_err("Couldn't get ifindex for %s", ifname);
-        return;
-    }
+    struct config cfg;
+    init_empty_config(&cfg);
+    cfg.ifindex = pair->outer_ifindex;
+    cfg.ifname = pair->veth_outer;
+    cfg.filename = dummy_prog_path;
 
     if (do_unload(&cfg) != 0) {
         lwlog_err("Couldn't unload XDP program on iface '%s'", cfg.ifname);
     }
-}
 
-void create_port(void* arg) {
-    if (arg == NULL) {
-        lwlog_err("create_port: arg is NULL");
-        return;
-    }
-
-    char* veth_name = arg;
-    lwlog_info("Creating veth pair: %s", veth_name);
-    create_veth(veth_name);
-
-    // Load peer af_xdp program
-    load_config(veth_name, "obj/af_xdp.o", true);
-
-    // Load non-peer dummy xdp program
-    load_config(veth_name, "obj/xdp_dummy.o", false);
-
-    int non_peer_ifindex = if_nametoindex(veth_name);
-    int ret = update_devmap(non_peer_ifindex);
-    if (ret == -1) {
-        lwlog_err("Couldn't update devmap for %s", veth_name);
-    }
-
-    add_to_veth_list(veth_name);
-}
-
-void delete_port(void* arg) {
-    if (arg == NULL) {
-        lwlog_err("delete_port: arg is NULL");
-        return;
-    }
-
-    char* veth_name = arg;
-
-    // Unload peer af_xdp program
-    unload_config(veth_name, "obj/af_xdp.o", true);
-
-    // Unload non-peer dummy xdp program
-    unload_config(veth_name, "obj/xdp_dummy.o", false);
-
-    lwlog_info("Deleting veth pair: %s", veth_name);
-    delete_veth(veth_name);
-
-    int ret = remove_from_veth_list(veth_name);
-    if (ret == -1) {
-        lwlog_err("Couldn't remove %s from veth list", veth_name);
+    cfg.ifindex = pair->inner_ifindex;
+    cfg.ifname = pair->veth_inner;
+    cfg.filename = af_xdp_prog_path;
+    if (do_unload(&cfg) != 0) {
+        lwlog_err("Couldn't unload XDP program on iface '%s'", cfg.ifname);
     }
 }
 
@@ -340,36 +270,70 @@ static inline void handle_error(const char* msg) {
     errno = 0;
 }
 
-int update_devmap(int ifindex) {
-    char pin_dir[PATH_MAX];
-    struct bpf_map_info info = {0};
-
-    char ifname[IF_NAMESIZE];
-    if (if_indextoname(ifindex, ifname) == NULL) {
-        lwlog_err("Couldn't get ifname from ifindex %d", ifindex);
-        return -1;
+void create_port(const void* arg) {
+    if (!arg) {
+        lwlog_err("arg is NULL");
+        return;
     }
 
-    int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, phy_ifname);
+    const char* prefix = arg;
+    int index = add_to_veth_list(prefix);
+    if (index == -1) {
+        lwlog_err("Couldn't add %s to veth list", prefix);
+        return;
+    }
+
+    lwlog_info("Creating veth pair: [%s, %s]", get_index(index)->veth_outer, get_index(index)->veth_inner);
+    create_veth(get_index(index)->veth_outer, get_index(index)->veth_inner);
+    get_index(index)->outer_ifindex = if_nametoindex(get_index(index)->veth_outer);
+    get_index(index)->inner_ifindex = if_nametoindex(get_index(index)->veth_inner);
+    load_pair_config(get_index(index));
+
+    const int ret = update_devmap(get_index(index)->outer_ifindex, get_index(index)->veth_outer);
+    if (ret) {
+        lwlog_err("Couldn't update devmap for %s", get_index(index)->veth_outer);
+    }
+}
+
+void delete_port(const void* arg) {
+    if (!arg) {
+        lwlog_err("arg is NULL");
+        return;
+    }
+
+    const char* prefix = arg;
+    struct veth_pair* pair = get_pair(prefix);
+    if (pair == NULL) {
+        lwlog_err("Couldn't find veth pair with prefix %s", prefix);
+        return;
+    }
+    lwlog_info("Deleting veth pair: [%s, %s]", pair->veth_outer, pair->veth_inner);
+    unload_pair_config(pair);
+    delete_veth(pair->veth_outer);
+    remove_from_veth_list(pair->veth_outer);
+}
+
+int update_devmap(int ifindex, char* ifname) {
+    char pin_dir[PATH_MAX] = {0};
+    struct bpf_map_info info = {0};
+
+    const int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, phy_ifname);
     if (len < 0 || len >= PATH_MAX) {
         lwlog_err("Couldn't format pin_dir");
         return -1;
     }
 
-    int map_fd = open_bpf_map_file(pin_dir, "xdp_devmap", &info);
+    const int map_fd = open_bpf_map_file(pin_dir, "xdp_devmap", &info);
     if (map_fd < 0) {
         lwlog_err("Couldn't open xdp_devmap");
         return -1;
     }
 
-    int key = 0;
-    int ret = bpf_map_update_elem(map_fd, &key, &ifindex, BPF_ANY);
-
+    const int key = 0;
+    const int ret = bpf_map_update_elem(map_fd, &key, &ifindex, BPF_ANY);
     if (ret) {
         lwlog_info("Couldn't update devmap for %s", ifname);
         return -1;
     }
-
-    lwlog_info("Redirecting packets from %s to %s", phy_ifname, ifname);
     return 0;
 }

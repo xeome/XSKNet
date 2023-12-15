@@ -4,24 +4,22 @@
 #include <string.h>
 #include <stdbool.h>
 #include <getopt.h>
-#include <errno.h>
 
 #include <net/if.h>
-#include <linux/if_link.h> /* XDP_FLAGS_* depend on kernel-headers installed */
 #include <linux/if_xdp.h>
 
 #include "libxsk.h"
 #include "flags.h"
+#include "lwlog.h"
 
 int verbose = 1;
 
 #define BUFSIZE 30
 
 void _print_options(const struct option_wrapper* long_options, bool required) {
-    int i, pos;
     char buf[BUFSIZE];
 
-    for (i = 0; long_options[i].option.name != 0; i++) {
+    for (int i = 0; long_options[i].option.name != 0; i++) {
         if (long_options[i].required != required)
             continue;
 
@@ -29,7 +27,7 @@ void _print_options(const struct option_wrapper* long_options, bool required) {
             printf(" -%c,", long_options[i].option.val);
         else
             printf("    ");
-        pos = snprintf(buf, BUFSIZE, " --%s", long_options[i].option.name);
+        const int pos = snprintf(buf, BUFSIZE, " --%s", long_options[i].option.name);
         if (long_options[i].metavar)
             snprintf(&buf[pos], BUFSIZE - pos, " %s", long_options[i].metavar);
         printf("%-22s", buf);
@@ -56,11 +54,11 @@ void usage(const char* prog_name, const char* doc, const struct option_wrapper* 
 }
 
 int option_wrappers_to_options(const struct option_wrapper* wrapper, struct option** options) {
-    int i, num;
+    int i;
     struct option* new_options;
     for (i = 0; wrapper[i].option.name != 0; i++) {
     }
-    num = i;
+    const int num = i;
 
     new_options = malloc(sizeof(struct option) * num);
     if (!new_options)
@@ -73,6 +71,17 @@ int option_wrappers_to_options(const struct option_wrapper* wrapper, struct opti
     return 0;
 }
 
+void init_empty_config(struct config* cfg) {
+    cfg->filename = "";
+    cfg->progname = "";
+    cfg->ifname = "";
+    cfg->ifindex = 0;
+    cfg->xsk_if_queue = 0;
+    cfg->unload_all = true;
+    cfg->xdp_flags = 0;
+    cfg->xsk_bind_flags = 0;
+}
+
 void parse_cmdline_args(int argc,
                         char** argv,
                         const struct option_wrapper* options_wrapper,
@@ -82,7 +91,6 @@ void parse_cmdline_args(int argc,
     struct option* long_options;
     bool full_help = false;
     int longindex = 0;
-    char* dest;
     int opt;
 
     if (option_wrappers_to_options(options_wrapper, &long_options)) {
@@ -98,28 +106,8 @@ void parse_cmdline_args(int argc,
                     fprintf(stderr, "ERR: --dev name too long\n");
                     goto error;
                 }
-                cfg->ifname = (char*)&cfg->ifname_buf;
-                strncpy(cfg->ifname, optarg, IF_NAMESIZE);
-                /* Create the veth pair */
-
+                cfg->ifname = strdup(optarg);
                 cfg->ifindex = if_nametoindex(cfg->ifname);
-                // if (cfg->ifindex == 0) {
-                //     fprintf(stderr, "ERR: --dev name unknown err(%d):%s\n", errno, strerror(errno));
-                //     goto error;
-                // }
-                break;
-            case 'r':
-                if (strlen(optarg) >= IF_NAMESIZE) {
-                    fprintf(stderr, "ERR: --redirect-dev name too long\n");
-                    goto error;
-                }
-                cfg->redirect_ifname = (char*)&cfg->redirect_ifname_buf;
-                strncpy(cfg->redirect_ifname, optarg, IF_NAMESIZE);
-                cfg->redirect_ifindex = if_nametoindex(cfg->redirect_ifname);
-                if (cfg->redirect_ifindex == 0) {
-                    fprintf(stderr, "ERR: --redirect-dev name unknown err(%d):%s\n", errno, strerror(errno));
-                    goto error;
-                }
                 break;
             case 'A':
                 cfg->attach_mode = XDP_MODE_UNSPEC;
@@ -135,15 +123,9 @@ void parse_cmdline_args(int argc,
             case 3: /* --offload-mode */
                 cfg->attach_mode = XDP_MODE_HW;
                 break;
-            case 'M':
-                cfg->reuse_maps = true;
-                break;
             case 'U':
                 cfg->do_unload = true;
                 cfg->prog_id = atoi(optarg);
-                break;
-            case 'p':
-                cfg->xsk_poll_mode = true;
                 break;
             case 'q':
                 verbose = false;
@@ -152,20 +134,7 @@ void parse_cmdline_args(int argc,
                 cfg->xsk_if_queue = atoi(optarg);
                 break;
             case 1: /* --filename */
-                dest = (char*)&cfg->filename;
-                strncpy(dest, optarg, sizeof(cfg->filename));
-                break;
-            case 2: /* --progname */
-                dest = (char*)&cfg->progname;
-                strncpy(dest, optarg, sizeof(cfg->progname));
-                break;
-            case 'L': /* --src-mac */
-                dest = (char*)&cfg->src_mac;
-                strncpy(dest, optarg, sizeof(cfg->src_mac));
-                break;
-            case 'R': /* --dest-mac */
-                dest = (char*)&cfg->dest_mac;
-                strncpy(dest, optarg, sizeof(cfg->dest_mac));
+                cfg->filename = strdup(optarg);
                 break;
             case 'c':
                 cfg->xsk_bind_flags &= ~XDP_ZEROCOPY;
