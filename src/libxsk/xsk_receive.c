@@ -1,10 +1,14 @@
 #include <poll.h>
 #include <assert.h>
+#include <stdlib.h>
 
-#include <arpa/inet.h>
+#include <sys/ioctl.h>
 #include <linux/icmp.h>
-#include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 #include "libxsk.h"
 #include "lwlog.h"
@@ -77,12 +81,11 @@ static inline void csum_replace2(uint16_t* sum, uint16_t old, uint16_t new) {
     *sum = ~csum;  // 1's complement of the checksum
 }
 
-static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len) {
+static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, struct tx_if* egress) {
     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     errno = 0;
     int ret;
-    uint32_t tx_idx = 0;
     struct in_addr tmp_ip;
     struct ethhdr* eth = (struct ethhdr*)pkt;
     struct iphdr* ipv4 = (struct iphdr*)(eth + 1);
@@ -132,26 +135,52 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     lwlog_info("Source IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->saddr));
     lwlog_info("Dest IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->daddr));
 
-    /* Here we send the packet out of the receive port. Note that
-     * we allocate one entry and schedule it. Your design would be
-     * faster if you do batch processing/transmission */
-    ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
-    if (ret != 1) {
-        lwlog_warning("Dropping packet due to lack of transmit slots");
+    // Open raw socket
+    int sockfd;
+    struct sockaddr_ll socket_address;
+
+    /* Open RAW socket to send on */
+    if ((sockfd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW)) == -1) {
+        lwlog_err("ERROR: Failed to open raw socket");
         return false;
     }
 
-    xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
-    xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
-    xsk_ring_prod__submit(&xsk->tx, 1);
-    xsk->outstanding_tx++;
+    socket_address.sll_ifindex = egress->ifindex;
+    socket_address.sll_halen = ETH_ALEN;
+    socket_address.sll_addr[0] = egress->mac[0];
+    socket_address.sll_addr[1] = egress->mac[1];
+    socket_address.sll_addr[2] = egress->mac[2];
+    socket_address.sll_addr[3] = egress->mac[3];
+    socket_address.sll_addr[4] = egress->mac[4];
+    socket_address.sll_addr[5] = egress->mac[5];
 
-    xsk->stats.tx_bytes += len;
-    xsk->stats.tx_packets++;
-    return true;
+    /* Send packet */
+    if ((ret = sendto(sockfd, pkt, len, 0, (struct sockaddr*)&socket_address, sizeof(socket_address))) == -1) {
+        lwlog_err("ERROR: Failed to send packet");
+        return false;
+    }
+
+    /* Here we send the packet out of the receive port. Note that
+     * we allocate one entry and schedule it. Your design would be
+     * faster if you do batch processing/transmission */
+    // ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
+    // if (ret != 1) {
+    //     lwlog_warning("Dropping packet due to lack of transmit slots");
+    //     return false;
+    // }
+
+    // xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
+    // xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
+    // xsk_ring_prod__submit(&xsk->tx, 1);
+    // xsk->outstanding_tx++;
+
+    // xsk->stats.tx_bytes += len;
+    // xsk->stats.tx_packets++;
+    // Do not transmit
+    return false;
 }
 
-static void handle_receive_packets(struct xsk_socket_info* xsk) {
+static void handle_receive_packets(struct xsk_socket_info* xsk, struct tx_if* egress) {
     unsigned int rcvd, stock_frames, i;
     uint32_t idx_rx = 0, idx_fq = 0;
     int ret;
@@ -186,7 +215,7 @@ static void handle_receive_packets(struct xsk_socket_info* xsk) {
         uint32_t len = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++)->len;
 
         /* If the packet was not processed correctly or does not need to be transmitted, free the frame */
-        if (!process_packet(xsk, addr, len))
+        if (!process_packet(xsk, addr, len, egress))
             xsk_free_umem_frame(xsk, addr);
 
         xsk->stats.rx_bytes += len;
@@ -199,9 +228,38 @@ static void handle_receive_packets(struct xsk_socket_info* xsk) {
     complete_tx(xsk);
 }
 
-void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool* global_exit) {
+void get_mac_address(unsigned char* mac_addr, const char* ifname) {
+    int fd;
+    struct ifreq ifr;
+    if (ifname == NULL) {
+        lwlog_err("ERROR: Couldn't get interface name from index");
+        exit(EXIT_FAILURE);
+    }
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd == -1) {
+        lwlog_err("ERROR: Couldn't create socket");
+        exit(EXIT_FAILURE);
+    }
+
+    ifr.ifr_addr.sa_family = AF_INET;
+    strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+
+    if (ioctl(fd, SIOCGIFHWADDR, &ifr) == -1) {
+        lwlog_err("ERROR: Couldn't get MAC address");
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd);
+
+    memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, 6);
+}
+
+void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool* global_exit, struct tx_if* egress) {
     struct pollfd fds[2];
     int ret, nfds = 1;
+
+    get_mac_address(egress->mac, phy_ifname);
 
     memset(fds, 0, sizeof(fds));
     fds[0].fd = xsk_socket__fd(xsk_socket->xsk);
@@ -213,6 +271,6 @@ void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool
             if (ret <= 0 || ret > 1)
                 continue;
         }
-        handle_receive_packets(xsk_socket);
+        handle_receive_packets(xsk_socket, egress);
     }
 }

@@ -43,6 +43,8 @@ int main(int argc, char** argv) {
     request_port(cfg.ifname);
     set_memory_limit();
 
+    egress.ifindex = if_nametoindex(phy_ifname);
+
     /* Create AF_XDP socket */
     struct xsk_socket_info* xsk_socket;
     xsk_socket = init_xsk_socket(&cfg);
@@ -64,7 +66,7 @@ int main(int argc, char** argv) {
     }
 
     /* Start receiving (Blocking)*/
-    rx_and_process(&cfg, xsk_socket, &global_exit);
+    rx_and_process(&cfg, xsk_socket, &global_exit, &egress);
     lwlog_info("Exited from poll loop");
 
     /* Wait for threads to finish */
@@ -72,7 +74,6 @@ int main(int argc, char** argv) {
     pthread_join(stats_poll_thread, NULL);
 
     /* Cleanup */
-
     cleanup(xsk_socket);
 
     lwlog_info("Exiting XDP User client");

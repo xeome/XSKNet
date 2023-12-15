@@ -57,7 +57,12 @@ int remove_from_veth_list(const char* veth_name);
 char** get_veth_list();
 int init_veth_list();
 
-void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool* global_exit);
+struct tx_if {
+    __u8 ifindex;
+    __u8 mac[6];
+};
+
+void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool* global_exit, struct tx_if* egress);
 
 #define NUM_FRAMES 4096
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
@@ -93,8 +98,3 @@ struct xsk_socket_info {
 };
 
 struct xsk_socket_info* init_xsk_socket(struct config* cfg);
-
-struct tx_if {
-    __u8 ifindex;
-    __u8 mac[6];
-};
