@@ -10,12 +10,22 @@
 #include "libxsk.h"
 #include "lwlog.h"
 
+/**
+ * @brief Allocates a frame from the user memory (umem).
+ *
+ * This function attempts to allocate a frame from the umem associated with the given xsk_socket_info structure.
+ * If no frames are available, it returns INVALID_UMEM_FRAME.
+ *
+ * @return The address of the allocated frame, or INVALID_UMEM_FRAME if no frames could be allocated.
+ */
 static uint64_t xsk_alloc_umem_frame(struct xsk_socket_info* xsk) {
     uint64_t frame;
     if (xsk->umem_frame_free == 0)
         return INVALID_UMEM_FRAME;
 
+    // Decrement the free frame count and return the address of the frame
     frame = xsk->umem_frame_addr[--xsk->umem_frame_free];
+    // Mark the frame as invalid
     xsk->umem_frame_addr[xsk->umem_frame_free] = INVALID_UMEM_FRAME;
     return frame;
 }
@@ -23,6 +33,7 @@ static uint64_t xsk_alloc_umem_frame(struct xsk_socket_info* xsk) {
 static void xsk_free_umem_frame(struct xsk_socket_info* xsk, uint64_t frame) {
     assert(xsk->umem_frame_free < NUM_FRAMES);
 
+    // Increment the free frame count and store the address of the frame in the free frame array
     xsk->umem_frame_addr[xsk->umem_frame_free++] = frame;
 }
 
@@ -37,34 +48,24 @@ static void complete_tx(struct xsk_socket_info* xsk) {
     if (!xsk->outstanding_tx)
         return;
 
+    /* Non-blocking wakeup of kernel for completions */
     sendto(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
 
     /* Collect/free completed TX buffers */
     completed = xsk_ring_cons__peek(&xsk->umem->cq, XSK_RING_CONS__DEFAULT_NUM_DESCS, &idx_cq);
 
-    if (completed > 0) {
-        for (int i = 0; i < completed; i++)
-            xsk_free_umem_frame(xsk, *xsk_ring_cons__comp_addr(&xsk->umem->cq, idx_cq++));
+    if (completed <= 0)
+        return;
 
-        xsk_ring_cons__release(&xsk->umem->cq, completed);
-        xsk->outstanding_tx -= completed < xsk->outstanding_tx ? completed : xsk->outstanding_tx;
-    }
+    /* For each completed transmission, free the corresponding user memory frame. */
+    for (int i = 0; i < completed; i++)
+        xsk_free_umem_frame(xsk, *xsk_ring_cons__comp_addr(&xsk->umem->cq, idx_cq++));
+
+    /* Release the completed transmissions from the completion queue. */
+    xsk_ring_cons__release(&xsk->umem->cq, completed);
+    xsk->outstanding_tx -= completed < xsk->outstanding_tx ? completed : xsk->outstanding_tx;
 }
 
-// static inline __sum16 csum16_add(__sum16 csum, __be16 addend) {
-//     uint16_t res = (uint16_t)csum;
-
-//     res += (__u16)addend;
-//     return (__sum16)(res + (res < (__u16)addend));
-// }
-
-// static inline __sum16 csum16_sub(__sum16 csum, __be16 addend) {
-//     return csum16_add(csum, ~addend);
-// }
-
-// static inline void csum_replace2(__sum16* sum, __be16 old, __be16 new) {
-//     *sum = ~csum16_add(csum16_sub(~(*sum), old), new);
-// }
 static inline void csum_replace2(uint16_t* sum, uint16_t old, uint16_t new) {
     uint16_t csum = ~*sum;  // 1's complement of the checksum (flip all the bits)
 
@@ -77,8 +78,7 @@ static inline void csum_replace2(uint16_t* sum, uint16_t old, uint16_t new) {
     *sum = ~csum;  // 1's complement of the checksum
 }
 
-// ipv4 instead
-static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, unsigned char mac_addr[6]) {
+static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len) {
     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     errno = 0;
@@ -114,30 +114,16 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
         lwlog_warning("Received non-ICMPv4 echo request");
         return false;
     }
-
+    uint8_t tmp_mac[ETH_ALEN];
+    memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
     memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
-    memcpy(eth->h_source, mac_addr, ETH_ALEN);
-
-    // set tmp_ip_addr to 10.0.0.1
-    __be32 tmp_ip_addr = inet_addr("10.0.0.2");
+    memcpy(eth->h_source, tmp_mac, ETH_ALEN);
 
     memcpy(&tmp_ip, &ipv4->saddr, sizeof(tmp_ip));
-    memcpy(&ipv4->saddr, &tmp_ip_addr, sizeof(tmp_ip_addr));
+    memcpy(&ipv4->saddr, &ipv4->daddr, sizeof(tmp_ip));
     memcpy(&ipv4->daddr, &tmp_ip, sizeof(tmp_ip));
-
     icmp->type = ICMP_ECHOREPLY;
     csum_replace2(&icmp->checksum, ICMP_ECHO, ICMP_ECHOREPLY);
-
-    // fib_params.family = AF_INET;
-    // fib_params.tos = ipv4->tos;
-    // fib_params.l4_protocol = ipv4->protocol;
-    // fib_params.sport = 0;
-    // fib_params.dport = 0;
-    // fib_params.tot_len = ntohs(ipv4->tot_len);
-    // fib_params.ipv4_src = ipv4->saddr;
-    // fib_params.ipv4_dst = ipv4->daddr;
-    // fib_params.ifindex = ifindex;
-    // ret = bpf_fib_lookup(ctx, &fib_params, sizeof(fib_params), BPF_FIB_LOOKUP_DIRECT);
 
     lwlog_info("Transmitting ICMPv4 echo reply");
     lwlog_info("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_source[0], eth->h_source[1], eth->h_source[2],
@@ -147,7 +133,7 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     lwlog_info("Source IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->saddr));
     lwlog_info("Dest IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->daddr));
 
-    /* Here we sent the packet out of the receive port. Note that
+    /* Here we send the packet out of the receive port. Note that
      * we allocate one entry and schedule it. Your design would be
      * faster if you do batch processing/transmission */
     ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
@@ -157,6 +143,9 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
         return false;
     }
 
+    /*
+
+    */
     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
     xsk_ring_prod__submit(&xsk->tx, 1);
@@ -167,67 +156,7 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     return true;
 }
 
-// static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len) {
-//     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
-
-//     int ret;
-//     uint32_t tx_idx = 0;
-//     uint8_t tmp_mac[ETH_ALEN];
-//     struct in6_addr tmp_ip;
-//     struct ethhdr* eth = (struct ethhdr*)pkt;
-//     struct ipv6hdr* ipv6 = (struct ipv6hdr*)(eth + 1);
-//     struct icmp6hdr* icmp = (struct icmp6hdr*)(ipv6 + 1);
-
-//     if (ntohs(eth->h_proto) != ETH_P_IPV6) {
-//         lwlog_warning("Received non-IPv6 packet");
-//         return false;
-//     }
-//     if (len < (sizeof(*eth) + sizeof(*ipv6) + sizeof(*icmp))) {
-//         lwlog_warning("Received too small packet");
-//         return false;
-//     }
-//     if (ipv6->nexthdr != IPPROTO_ICMPV6) {
-//         lwlog_warning("Received non-ICMPv6 packet");
-//         return false;
-//     }
-//     if (icmp->icmp6_type != ICMPV6_ECHO_REQUEST) {
-//         lwlog_warning("Received non-ICMPv6 echo request");
-//         return false;
-//     }
-
-//     memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
-//     memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
-//     memcpy(eth->h_source, tmp_mac, ETH_ALEN);
-
-//     memcpy(&tmp_ip, &ipv6->saddr, sizeof(tmp_ip));
-//     memcpy(&ipv6->saddr, &ipv6->daddr, sizeof(tmp_ip));
-//     memcpy(&ipv6->daddr, &tmp_ip, sizeof(tmp_ip));
-
-//     icmp->icmp6_type = ICMPV6_ECHO_REPLY;
-
-//     csum_replace2(&icmp->icmp6_cksum, htons(ICMPV6_ECHO_REQUEST << 8), htons(ICMPV6_ECHO_REPLY << 8));
-
-//     /* Here we sent the packet out of the receive port. Note that
-//      * we allocate one entry and schedule it. Your design would be
-//      * faster if you do batch processing/transmission */
-//     ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
-//     if (ret != 1) {
-//         /* No more transmit slots, drop the packet */
-//         lwlog_warning("Dropping packet due to lack of transmit slots");
-//         return false;
-//     }
-
-//     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
-//     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
-//     xsk_ring_prod__submit(&xsk->tx, 1);
-//     xsk->outstanding_tx++;
-
-//     xsk->stats.tx_bytes += len;
-//     xsk->stats.tx_packets++;
-//     return true;
-// }
-
-static void handle_receive_packets(struct xsk_socket_info* xsk, unsigned char mac_addr[6]) {
+static void handle_receive_packets(struct xsk_socket_info* xsk) {
     unsigned int rcvd, stock_frames, i;
     uint32_t idx_rx = 0, idx_fq = 0;
     int ret;
@@ -242,22 +171,27 @@ static void handle_receive_packets(struct xsk_socket_info* xsk, unsigned char ma
     if (stock_frames > 0) {
         ret = xsk_ring_prod__reserve(&xsk->umem->fq, stock_frames, &idx_fq);
 
-        /* This should not happen, but just in case */
+        /* This should not happen, but just in case
+         * Wait until we can reserve enough space in the fill queue
+         */
         while (ret != stock_frames)
             ret = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
 
         for (i = 0; i < stock_frames; i++)
             *xsk_ring_prod__fill_addr(&xsk->umem->fq, idx_fq++) = xsk_alloc_umem_frame(xsk);
 
+        /* Finally, tell the kernel that it can start writing packets into the rx ring */
         xsk_ring_prod__submit(&xsk->umem->fq, stock_frames);
     }
 
     /* Process received packets */
     for (i = 0; i < rcvd; i++) {
+        /* Get the address of the frame from the rx ring */
         uint64_t addr = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx)->addr;
         uint32_t len = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++)->len;
 
-        if (!process_packet(xsk, addr, len, mac_addr))
+        /* If the packet was not processed correctly or does not need to be transmitted, free the frame */
+        if (!process_packet(xsk, addr, len))
             xsk_free_umem_frame(xsk, addr);
 
         xsk->stats.rx_bytes += len;
@@ -284,6 +218,6 @@ void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, bool
             if (ret <= 0 || ret > 1)
                 continue;
         }
-        handle_receive_packets(xsk_socket, cfg->src_mac);
+        handle_receive_packets(xsk_socket);
     }
 }
