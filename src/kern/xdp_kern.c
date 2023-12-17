@@ -66,9 +66,9 @@ int xdp_redirect(struct xdp_md* ctx) {
     bpf_printk("Source IP: %pI4", &iph->saddr);
     bpf_printk("Dest IP: %pI4", &iph->daddr);
 
-    __u32 port = 0;
+    const __u32 port = 0;
 
-    int* ifindex = bpf_map_lookup_elem(&xdp_devmap, &port);
+    const int* ifindex = bpf_map_lookup_elem(&xdp_devmap, &port);
 
     if (!ifindex) {
         return XDP_DROP;

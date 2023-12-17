@@ -79,7 +79,7 @@ static inline void csum_replace2(uint16_t* sum, const uint16_t old, const uint16
     *sum = ~csum;  // 1's complement of the checksum
 }
 
-static bool process_packet(const struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, const struct tx_if* egress) {
+static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, const struct tx_if* egress) {
     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     errno = 0;
@@ -158,6 +158,9 @@ static bool process_packet(const struct xsk_socket_info* xsk, uint64_t addr, uin
         return false;
     }
 
+    xsk->stats.tx_bytes += len;
+    xsk->stats.tx_packets++;
+
     /* Here we send the packet out of the receive port. Note that
      * we allocate one entry and schedule it. Your design would be
      * faster if you do batch processing/transmission */
@@ -172,8 +175,6 @@ static bool process_packet(const struct xsk_socket_info* xsk, uint64_t addr, uin
     // xsk_ring_prod__submit(&xsk->tx, 1);
     // xsk->outstanding_tx++;
 
-    // xsk->stats.tx_bytes += len;
-    // xsk->stats.tx_packets++;
     // Do not transmit
     return false;
 }

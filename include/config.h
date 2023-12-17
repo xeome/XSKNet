@@ -17,3 +17,8 @@ struct config {
     __u32 xdp_flags;
 };
 void init_empty_config(struct config* cfg);
+
+static const char* pin_basedir = "/sys/fs/bpf";
+static const char* phy_ifname = "wlan0";
+static char* dummy_prog_path = "obj/xdp_dummy.o";
+static char* af_xdp_prog_path = "obj/af_xdp.o";

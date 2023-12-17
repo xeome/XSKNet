@@ -17,74 +17,7 @@
 #define PATH_MAX 4096
 #endif
 
-// static int reuse_maps(struct bpf_object* obj, const char* path) {
-//     struct bpf_map* map;
-
-//     if (!obj)
-//         return -ENOENT;
-
-//     if (!path)
-//         return -EINVAL;
-
-//     bpf_object__for_each_map(map, obj) {
-//         int len, err;
-//         int pinned_map_fd;
-//         char buf[PATH_MAX];
-
-//         len = snprintf(buf, PATH_MAX, "%s/%s", path, bpf_map__name(map));
-//         if (len < 0) {
-//             return -EINVAL;
-//         } else if (len >= PATH_MAX) {
-//             return -ENAMETOOLONG;
-//         }
-
-//         pinned_map_fd = bpf_obj_get(buf);
-//         if (pinned_map_fd < 0)
-//             return pinned_map_fd;
-
-//         err = bpf_map__reuse_fd(map, pinned_map_fd);
-//         if (err)
-//             return err;
-//     }
-
-//     return 0;
-// }
-
-#if 0
-struct bpf_object *load_bpf_object_file_reuse_maps(const char *file,
-						   int ifindex,
-						   const char *pin_dir)
-{
-	int err;
-	struct bpf_object *obj;
-
-	obj = open_bpf_object(file, ifindex);
-	if (!obj) {
-		fprintf(stderr, "ERR: failed to open object %s\n", file);
-		return NULL;
-	}
-
-	err = reuse_maps(obj, pin_dir);
-	if (err) {
-		fprintf(stderr, "ERR: failed to reuse maps for object %s, pin_dir=%s\n",
-				file, pin_dir);
-		return NULL;
-	}
-
-	err = bpf_object__load(obj);
-	if (err) {
-		fprintf(stderr, "ERR: loading BPF-OBJ file(%s) (%d): %s\n",
-			file, err, strerror(-err));
-		return NULL;
-	}
-
-	return obj;
-}
-#endif
-
 struct xdp_program* load_bpf_and_xdp_attach(const struct config* cfg) {
-    /* In next assignment this will be moved into ../common/ */
-
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
     DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
 
@@ -312,7 +245,7 @@ int do_unload(const struct config* cfg) {
     if (cfg->unload_all) {
         err = xdp_multiprog__detach(mp);
         if (err) {
-            lwlog_warning("Unable to detach XDP program: %s", strerror(-err));
+            lwlog_warning("Unable to detach XDP program");
             goto defer;
         }
     } else {

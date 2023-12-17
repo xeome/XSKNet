@@ -136,7 +136,6 @@ void cleanup(const struct xsk_socket_info* xsk_socket) {
     // remove last 5 characters from ifname to get the veth name (test_peer -> test)
     char* veth_name = calloc(1, IFNAMSIZ);
     snprintf(veth_name, IFNAMSIZ, "%.*s", (int)strlen(cfg->ifname) - 5, cfg->ifname);
-    lwlog_info("Deleting veth pair: %s", veth_name);
 
     request_port_deletion(veth_name);
 }

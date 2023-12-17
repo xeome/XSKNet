@@ -24,7 +24,7 @@ struct {
 
 SEC("xdp")
 int xdp_sock_prog(struct xdp_md* ctx) {
-    int index = ctx->rx_queue_index;
+    const int index = ctx->rx_queue_index;
 
     void* data_end = (void*)(long)ctx->data_end;
     void* data = (void*)(long)ctx->data;

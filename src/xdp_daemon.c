@@ -87,7 +87,7 @@ void exit_application(int signal) {
         if (veth_list[i] != NULL) {
             unload_xdp_program(veth_list[i]->veth_outer);
             unload_xdp_program(veth_list[i]->veth_inner);
-            delete_veth(veth_list[i]->veth_outer);
+            delete_veth(veth_list[i]->veth_outer);  // it will delete veth_inner too
         }
     }
 
