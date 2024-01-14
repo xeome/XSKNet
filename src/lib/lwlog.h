@@ -13,7 +13,7 @@
 #include <string.h>
 
 #ifndef LOG_LEVEL
-#define LOG_LEVEL (7)
+#define LOG_LEVEL (6)
 #endif
 
 #ifndef LOG_COLOR
@@ -26,9 +26,8 @@
 #define CRIT (2)
 #define ERR (3)
 #define WARNING (4)
-#define NOTICE (5)
-#define INFO (6)
-#define DEBUG (7)
+#define INFO (5)
+#define DEBUG (6)
 
 // colors
 #define NONE "\e[0m"
@@ -66,7 +65,7 @@
     do {                                                                     \
         fprintf(stderr,                                                      \
                 RED                                                          \
-                "[EMERG]   "                                                 \
+                "[EMERG] "                                                   \
                 "%s (%s:%d) " NONE M YELLOW " errno: %s\n" NONE,             \
                 __func__, __FILE__, __LINE__, ##__VA_ARGS__, clean_errno()); \
     } while (0)
@@ -74,7 +73,7 @@
     do {                                                                     \
         fprintf(stderr,                                                      \
                 PURPLE                                                       \
-                "[ALERT]   "                                                 \
+                "[ALERT] "                                                   \
                 "%s (%s:%d) " NONE M YELLOW " errno: %s\n" NONE,             \
                 __func__, __FILE__, __LINE__, ##__VA_ARGS__, clean_errno()); \
     } while (0)
@@ -82,15 +81,15 @@
     do {                                                                     \
         fprintf(stderr,                                                      \
                 YELLOW                                                       \
-                "[CRIT]    "                                                 \
+                "[CRIT]  "                                                   \
                 "%s (%s:%d) " NONE M YELLOW " errno: %s\n" NONE,             \
                 __func__, __FILE__, __LINE__, ##__VA_ARGS__, clean_errno()); \
     } while (0)
 #define lwlog_err(M, ...)                                                    \
     do {                                                                     \
         fprintf(stderr,                                                      \
-                BROWN                                                        \
-                "[ERR]     "                                                 \
+                RED                                                          \
+                "[ERR]   "                                                   \
                 "%s (%s:%d) " NONE M YELLOW " errno: %s\n" NONE,             \
                 __func__, __FILE__, __LINE__, ##__VA_ARGS__, clean_errno()); \
     } while (0)
@@ -98,15 +97,7 @@
     do {                                                                     \
         fprintf(stderr,                                                      \
                 BLUE                                                         \
-                "[WARNING] "                                                 \
-                "%s (%s:%d) " NONE M YELLOW " errno: %s\n" NONE,             \
-                __func__, __FILE__, __LINE__, ##__VA_ARGS__, clean_errno()); \
-    } while (0)
-#define lwlog_notice(M, ...)                                                 \
-    do {                                                                     \
-        fprintf(stderr,                                                      \
-                CYAN                                                         \
-                "[NOTICE]  "                                                 \
+                "[WARN]  "                                                   \
                 "%s (%s:%d) " NONE M YELLOW " errno: %s\n" NONE,             \
                 __func__, __FILE__, __LINE__, ##__VA_ARGS__, clean_errno()); \
     } while (0)
@@ -114,7 +105,7 @@
     do {                                                      \
         fprintf(stderr,                                       \
                 GREEN                                         \
-                "[INFO]    "                                  \
+                "[INFO]  "                                    \
                 "%s (%s:%d) " NONE M "\n",                    \
                 __func__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (0)
@@ -122,7 +113,7 @@
     do {                                                      \
         fprintf(stderr,                                       \
                 GRAY                                          \
-                "[DEBUG]   "                                  \
+                "[DEBUG] "                                    \
                 "%s (%s:%d) " NONE M "\n",                    \
                 __func__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (0)
@@ -139,13 +130,6 @@
 #undef lwlog_info
 #define lwlog_info(M, ...) \
     do {                   \
-    } while (0)
-#endif
-
-#if LOG_LEVEL < NOTICE
-#undef lwlog_notice
-#define lwlog_notice(M, ...) \
-    do {                     \
     } while (0)
 #endif
 
