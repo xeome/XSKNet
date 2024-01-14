@@ -79,7 +79,7 @@ static inline void csum_replace2(uint16_t* sum, const uint16_t old, const uint16
     *sum = ~csum;  // 1's complement of the checksum
 }
 
-static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, const struct tx_if* egress) {
+static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, const struct iface* egress) {
     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     errno = 0;
@@ -133,27 +133,9 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     lwlog_info("Source IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->saddr));
     lwlog_info("Dest IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->daddr));
 
-    // Open raw socket
-    int sockfd;
-    struct sockaddr_ll socket_address;
-
-    /* Open RAW socket to send on */
-    if ((sockfd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW)) == -1) {
-        lwlog_err("ERROR: Failed to open raw socket");
-        return false;
-    }
-
-    socket_address.sll_ifindex = egress->ifindex;
-    socket_address.sll_halen = ETH_ALEN;
-    socket_address.sll_addr[0] = egress->mac[0];
-    socket_address.sll_addr[1] = egress->mac[1];
-    socket_address.sll_addr[2] = egress->mac[2];
-    socket_address.sll_addr[3] = egress->mac[3];
-    socket_address.sll_addr[4] = egress->mac[4];
-    socket_address.sll_addr[5] = egress->mac[5];
-
     /* Send packet */
-    if ((ret = sendto(sockfd, pkt, len, 0, (struct sockaddr*)&socket_address, sizeof(socket_address))) == -1) {
+    if ((ret = sendto(egress->sockfd, pkt, len, 0, (struct sockaddr*)egress->socket_address, sizeof(*egress->socket_address))) ==
+        -1) {
         lwlog_err("ERROR: Failed to send packet");
         return false;
     }
@@ -175,11 +157,11 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     // xsk_ring_prod__submit(&xsk->tx, 1);
     // xsk->outstanding_tx++;
 
-    // Do not transmit
+    // Do not transmit using the XSK
     return false;
 }
 
-static void handle_receive_packets(struct xsk_socket_info* xsk, const struct tx_if* egress) {
+static void handle_receive_packets(struct xsk_socket_info* xsk, const struct iface* egress) {
     unsigned int i;
     uint32_t idx_rx = 0, idx_fq = 0;
 
@@ -228,8 +210,12 @@ static void handle_receive_packets(struct xsk_socket_info* xsk, const struct tx_
 
 void get_mac_address(unsigned char* mac_addr, const char* ifname) {
     struct ifreq ifr;
-    if (ifname == NULL) {
+    if (!ifname) {
         lwlog_err("ERROR: Couldn't get interface name from index");
+        exit(EXIT_FAILURE);
+    }
+    if (!mac_addr) {
+        lwlog_err("ERROR: Couldn't get MAC address");
         exit(EXIT_FAILURE);
     }
 
@@ -252,10 +238,14 @@ void get_mac_address(unsigned char* mac_addr, const char* ifname) {
     memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, 6);
 }
 
-void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, const bool* global_exit, struct tx_if* egress) {
+void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, const bool* global_exit, struct iface* egress) {
     struct pollfd fds[2];
 
-    get_mac_address(egress->mac, phy_ifname);
+    /* Open RAW socket to send on */
+    if ((egress->sockfd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW)) == -1) {
+        lwlog_err("ERROR: Failed to open raw socket");
+        return;
+    }
 
     memset(fds, 0, sizeof(fds));
     fds[0].fd = xsk_socket__fd(xsk_socket->xsk);

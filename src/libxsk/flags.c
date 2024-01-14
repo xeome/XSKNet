@@ -15,7 +15,7 @@ int verbose = 1;
 
 #define BUFSIZE 30
 
-void _print_options(const struct option_wrapper* long_options, bool required) {
+void _print_options(const struct option_wrapper* long_options, const bool required) {
     char buf[BUFSIZE];
 
     for (int i = 0; long_options[i].option.name != 0; i++) {

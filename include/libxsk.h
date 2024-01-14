@@ -26,7 +26,7 @@ struct bpf_object* load_bpf_object_file(const char* filename, int ifindex);
 const char* action2str(__u32 action);
 int check_map_fd_info(const struct bpf_map_info* info, const struct bpf_map_info* exp);
 int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_info* info);
-int load_xdp_program(const struct config* cfg, struct xdp_program* prog, char* map_name);
+int load_xdp_program(const struct config* cfg, char* map_name);
 
 // api commands
 void* tcp_server_nonblocking(void* arg);
@@ -63,12 +63,13 @@ struct veth_pair** get_veth_list();
 struct veth_pair* get_index(int index);
 struct veth_pair* get_pair(const char* prefix);
 
-struct tx_if {
-    __u8 ifindex;
-    __u8 mac[6];
+struct iface {
+    int sockfd;
+    struct sockaddr_ll* socket_address;
 };
 
-void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, const bool* global_exit, struct tx_if* egress);
+void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, const bool* global_exit, struct iface* egress);
+void get_mac_address(unsigned char* mac_addr, const char* ifname);
 
 #define NUM_FRAMES 4096
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE

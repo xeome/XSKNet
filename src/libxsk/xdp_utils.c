@@ -173,8 +173,7 @@ int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir, char*
 
     return 0;
 }
-
-int load_xdp_program(const struct config* cfg, struct xdp_program* prog, char* map_name) {
+int load_xdp_program(const struct config* cfg, char* map_name) {
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts);
     DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
     if (!cfg->filename) {
@@ -191,6 +190,7 @@ int load_xdp_program(const struct config* cfg, struct xdp_program* prog, char* m
     xdp_opts.open_filename = cfg->filename;
     xdp_opts.prog_name = cfg->progname;
     xdp_opts.opts = &opts;
+    struct xdp_program* prog;
     if (!cfg->progname) {
         prog = xdp_program__create(&xdp_opts);
     } else {

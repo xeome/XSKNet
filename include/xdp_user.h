@@ -1,5 +1,7 @@
 #pragma once
 
+#define ETH_ALEN 6
+
 const struct option_wrapper long_options[] = {
     {{"help", no_argument, NULL, 'h'}, "Show help", false},
     {{"dev", required_argument, NULL, 'd'}, "Operate on device <ifname>", "<ifname>", true},
@@ -12,3 +14,4 @@ void request_port_deletion(char* ifname);
 void cleanup(const struct xsk_socket_info* xsk_socket);
 void start_stats_thread(struct xsk_socket_info* xsk_socket, pthread_t* stats_poll_thread);
 static void set_memory_limit();
+static void init_egress(struct iface* egress);

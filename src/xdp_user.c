@@ -4,6 +4,7 @@
 #include <net/if.h>
 #include <sys/resource.h>
 #include <pthread.h>
+#include <linux/if_packet.h>
 
 #include "libxsk.h"
 #include "lwlog.h"
@@ -14,9 +15,8 @@ static bool global_exit;
 
 struct config* cfg = NULL;
 
-struct tx_if egress = {
-    .ifindex = -1,
-    .mac = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+struct iface egress = {
+    .socket_address = NULL,
 };
 
 static const char* __doc__ = "AF_XDP kernel bypass example, User App\n";
@@ -38,6 +38,7 @@ int main(int argc, char** argv) {
     signal(SIGTERM, sigint_handler);
 
     init_empty_config(cfg);
+    init_egress(&egress);
 
     lwlog_info("Starting XDP User client");
     parse_cmdline_args(argc, argv, long_options, cfg, __doc__, true);
@@ -45,8 +46,6 @@ int main(int argc, char** argv) {
     /* Request veth creation and XDP program loading from daemon */
     request_port(cfg->ifname);
     set_memory_limit();
-
-    egress.ifindex = if_nametoindex(phy_ifname);
 
     /* Create AF_XDP socket */
     struct xsk_socket_info* xsk_socket = init_xsk_socket(cfg);
@@ -150,4 +149,12 @@ static void set_memory_limit() {
         lwlog_err("ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
+}
+
+static void init_egress(struct iface* egress) {
+    egress->socket_address = calloc(1, sizeof(*egress->socket_address));
+
+    get_mac_address(egress->socket_address->sll_addr, phy_ifname);
+    egress->socket_address->sll_halen = ETH_ALEN;
+    egress->socket_address->sll_ifindex = if_nametoindex(phy_ifname);
 }

@@ -11,7 +11,6 @@
 #include "flags.h"
 
 bool global_exit;
-struct xdp_program* prog;
 pthread_t socket_thread;
 
 static const char* __doc__ = "AF_XDP kernel bypass example\n";
@@ -33,11 +32,12 @@ int main(const int argc, char** argv) {
     init_veth_list();
     lwlog_info("Starting XDP Daemon");
 
-    struct config* cfg = malloc(sizeof(struct config));
+    struct config* cfg = (struct config*)malloc(sizeof(struct config));
+    init_empty_config(cfg);
     /* Cmdline options can change progname */
     parse_cmdline_args(argc, argv, long_options, cfg, __doc__, false);
     /* Load XDP program */
-    if (load_xdp_program(cfg, prog, "xdp_devmap") != 0) {
+    if (load_xdp_program(cfg, "xdp_devmap") != 0) {
         lwlog_err("Couldn't load XDP program");
     }
     /* Start socket (Polling and non-blocking) */

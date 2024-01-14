@@ -207,14 +207,14 @@ static void load_pair_config(const struct veth_pair* pair) {
         .filename = dummy_prog_path,
     };
 
-    if (load_xdp_program(&cfg, NULL, NULL) != 0) {
+    if (load_xdp_program(&cfg, NULL) != 0) {
         lwlog_err("Couldn't load XDP program on iface '%s'", cfg.ifname);
     }
 
     cfg.ifindex = pair->inner_ifindex;
     cfg.ifname = pair->veth_inner;
     cfg.filename = af_xdp_prog_path;
-    if (load_xdp_program(&cfg, NULL, "xsks_map") != 0) {
+    if (load_xdp_program(&cfg, "xsks_map") != 0) {
         lwlog_err("Couldn't load XDP program on iface '%s'", cfg.ifname);
     }
 }
