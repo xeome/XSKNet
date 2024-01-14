@@ -6,6 +6,7 @@
 #include "signal_handler.h"
 #include "lwlog.h"
 #include "socket.h"
+#include "xdp_utils.h"
 
 volatile sig_atomic_t global_exit_flag = 0;
 
@@ -14,6 +15,13 @@ void exit_daemon() {
 
     lwlog_info("Waiting for socket thread to exit");
     pthread_join(socket_thread, NULL);  // its running socket_server_thread_func
+
+    lwlog_info("Unloading XDP from wlan0");
+    int err = unload_xdp_from_ifname("wlan0");
+    if (err != EXIT_OK) {
+        lwlog_crit("unload_xdp_from_ifname: %s", strerror(err));
+    }
+
     exit(EXIT_SUCCESS);
 }
 
