@@ -67,9 +67,19 @@ void delete_port(const char* prefix) {
     char cmd[CMD_SIZE];
     snprintf(cmd, CMD_SIZE, "./scripts/delete_veth.sh %s", inner);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
-    lwlog_info("Deleting veth pair: [%s]", inner);
+    lwlog_info("Deleting veth pair: [%s, %s]", inner, outer);
     err = system(cmd);
     if (err != 0) {
-        lwlog_err("Failed to delete veth pair: [%s]", inner);
+        lwlog_err("Failed to delete veth pair: [%s, %s]", inner, outer);
+    }
+}
+
+void unload_list() {
+    for (int i = 0; i < veths->size; i++) {
+        char prefix[IFNAMSIZ];
+        // remove trailing _inner
+        strncpy(prefix, veths->veth_pairs[i].veth1,
+                strlen(veths->veth_pairs[i].veth1) - 6);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+        delete_port(prefix);
     }
 }

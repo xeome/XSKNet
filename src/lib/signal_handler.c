@@ -7,6 +7,7 @@
 #include "signal_handler.h"
 #include "lwlog.h"
 #include "socket.h"
+#include "socket_cmds.h"
 #include "xdp_utils.h"
 #include "veth_list.h"
 
@@ -26,13 +27,15 @@ void exit_daemon() {
         lwlog_crit("unload_xdp_from_ifname: %s", strerror(err));
     }
 
+    unload_list();
+
     exit(EXIT_SUCCESS);
 }
 
 /*
  * Signal handler for SIGINT
  */
-static void sigint_handler() {
+static void daemon_sigint_handler() {
     fprintf(stderr, "\n");
     fprintf(stderr, RED "Interrupted by user\n" NONE);
     exit_daemon();
@@ -41,7 +44,7 @@ static void sigint_handler() {
 /*
  * Signal handler for SIGTERM
  */
-static void sigterm_handler() {
+static void daemon_sigterm_handler() {
     fprintf(stderr, "\n");
     fprintf(stderr, RED "Terminated\n" NONE);
     exit_daemon();
@@ -50,7 +53,31 @@ static void sigterm_handler() {
 /*
  * Initializes the signal handlers
  */
-void signal_init() {
-    signal(SIGINT, sigint_handler);
-    signal(SIGTERM, sigterm_handler);
+void daemon_signal_init() {
+    signal(SIGINT, daemon_sigint_handler);
+    signal(SIGTERM, daemon_sigterm_handler);
+}
+
+void exit_client() {
+    global_exit_flag = 1;
+
+    remove_port(opts.dev);
+
+    exit(EXIT_SUCCESS);
+}
+static void client_sigint_handler() {
+    fprintf(stderr, "\n");
+    fprintf(stderr, RED "Interrupted by user\n" NONE);
+    exit_client();
+}
+
+static void client_sigterm_handler() {
+    fprintf(stderr, "\n");
+    fprintf(stderr, RED "Terminated\n" NONE);
+    exit_client();
+}
+
+void client_signal_init() {
+    signal(SIGINT, client_sigint_handler);
+    signal(SIGTERM, client_sigterm_handler);
 }

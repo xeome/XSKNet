@@ -1,5 +1,7 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "args.h"
@@ -10,15 +12,20 @@
 #include "socket_handler.h"
 
 int main(const int argc, char* argv[]) {
-    options_t options;
-    options_parser(argc, argv, &options);
-    signal_init();
+    options_parser(argc, argv, &opts);
+
+    if (strcmp(opts.dev, "/dev/stdout") == 0) {
+        lwlog_err("Cannot use /dev/stdout as a device name");
+        exit(EXIT_FAILURE);
+    }
+
+    client_signal_init();
 
     lwlog_info("Starting client");
 
-    socket_send_to_port("create_port test", 8080);
+    request_port(opts.dev);
     sleep(5);
-    socket_send_to_port("delete_port test", 8080);
+    remove_port(opts.dev);
 
     return 0;
 }

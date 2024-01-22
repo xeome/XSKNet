@@ -13,7 +13,12 @@
 int main(const int argc, char* argv[]) {
     options_parser(argc, argv, &opts);
 
-    signal_init();
+    if (strcmp(opts.dev, "/dev/stdout") == 0) {
+        lwlog_err("Cannot use /dev/stdout as a device name");
+        exit(EXIT_FAILURE);
+    }
+
+    daemon_signal_init();
     lwlog_info("Starting Daemon");
     veths = veth_list_create(10);
 

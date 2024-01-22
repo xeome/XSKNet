@@ -180,9 +180,23 @@ void socket_send_to_port(char* cmd, int port) {
     lwlog_info("Connecting to server on port %d", port);
     socket_connect(socket_fd, "127.0.0.1", port);
 
-    lwlog_info("Sending command to server");
+    lwlog_info("Sending command to server: %s", cmd);
     socket_write_with_timeout(socket_fd, cmd, strlen(cmd));
 
     lwlog_info("Closing socket");
     socket_close(socket_fd);
+}
+
+void request_port(const char* veth_name) {
+    lwlog_info("Requesting port %s", veth_name);
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "create_port %s", veth_name);
+    socket_send_to_port(buffer, 8080);
+}
+
+void remove_port(const char* veth_name) {
+    lwlog_info("Deleting port %s", veth_name);
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "delete_port %s", veth_name);
+    socket_send_to_port(buffer, 8080);
 }

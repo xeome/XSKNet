@@ -72,6 +72,7 @@ int unload_xdp_from_ifname(const char* ifname) {
         lwlog_err("ifname is NULL");
         return EXIT_FAIL_OPTION;
     }
+    lwlog_info("Unloading XDP program from interface %s", ifname);
 
     struct xdp_multiprog* mp = NULL;
     int err = EXIT_FAILURE;
@@ -102,6 +103,34 @@ int unload_xdp_from_ifname(const char* ifname) {
 defer:
     xdp_multiprog__close(mp);
     return err ? EXIT_FAIL_XDP : EXIT_OK;
+}
+
+int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_info* info) {
+    char filename[PATH_MAX];
+    __u32 info_len = sizeof(*info);
+
+    const int len = snprintf(filename, PATH_MAX, "%s/%s", pin_dir, mapname);
+    if (len < 0) {
+        fprintf(stderr, "ERR: constructing full mapname path\n");
+        return -1;
+    }
+
+    const int fd = bpf_obj_get(filename);
+    if (fd < 0) {
+        lwlog_err("WARN: Failed to open bpf map file:%s err(%d):%s\n", filename, errno, strerror(errno));
+        return fd;
+    }
+
+    if (info) {
+        const int err = bpf_obj_get_info_by_fd(fd, info, &info_len);
+        if (err) {
+            lwlog_err("ERR: %s() can't get info - %s\n", __func__, strerror(errno));
+
+            return EXIT_FAIL_BPF;
+        }
+    }
+
+    return fd;
 }
 
 int load_xdp_and_attach_to_ifname(const char* ifname, const char* filename, const char* progname) {

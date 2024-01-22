@@ -1,5 +1,7 @@
 #pragma once
 
+#include <linux/bpf.h>
+
 enum {
     EXIT_OK = 0,
     EXIT_FAIL = 1,
@@ -11,4 +13,5 @@ enum {
 
 #define pin_basedir "/sys/fs/bpf"
 int unload_xdp_from_ifname(const char* ifname);
+int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_info* info);
 int load_xdp_and_attach_to_ifname(const char* ifname, const char* filename, const char* progname);

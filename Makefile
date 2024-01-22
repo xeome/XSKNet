@@ -8,7 +8,7 @@ XDP_SRC_PATH := src/kern
 CC := clang
 
 SANITIZE := -fsanitize=address -fsanitize=undefined -fsanitize=bounds -fsanitize=nullability  -fsanitize=integer -fsanitize=object-size -fsanitize=shift -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=vptr
-CFLAGS := -Wall -Wextra -I$(INC_PATH) -g -lxdp -lbpf #$(SANITIZE)
+CFLAGS := -Wall -Wextra -I$(INC_PATH) -g -lxdp -lbpf#$(SANITIZE)
 XDP_FLAGS := -O2 -g -Wall -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -target bpf -D __BPF_TRACING__ -Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types -c
 DAEMON := $(BIN_PATH)/daemon
 CLIENT := $(BIN_PATH)/client

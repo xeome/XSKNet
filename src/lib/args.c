@@ -47,7 +47,6 @@ void switch_options(int arg, options_t* options) {
             options->version = true;
             version();
             exit(EXIT_SUCCESS);
-
         case 'd':
             strncpy(options->dev, optarg, DEV_NAME_SIZE);
             break;
@@ -89,8 +88,8 @@ void options_parser(int argc, char* argv[], options_t* options) {
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
         {"version", no_argument, 0, 'v'},
-        {"no-colors", no_argument, 0, 0},
         {"dev", required_argument, 0, 'd'},
+        {"no-colors", no_argument, 0, 0},
     };
 
     while (true) {
