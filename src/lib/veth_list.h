@@ -1,5 +1,4 @@
-#ifndef VETH_LIST_H
-#define VETH_LIST_H
+#pragma once
 
 struct veth_pair {
     char* veth1;
@@ -38,5 +37,3 @@ void veth_list_print(const struct veth_list* veth_list);
 
 // Get the size of the veth_list
 int veth_list_size(const struct veth_list* veth_list);
-
-#endif  // VETH_LIST_H

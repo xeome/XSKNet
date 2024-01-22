@@ -116,7 +116,7 @@ error_exit:
     return NULL;
 }
 
-struct xsk_socket_info* init_xsk_socket(const struct veth_pair* veth_pair) {
+struct xsk_socket_info* init_xsk_socket(const char* prefix) {
     void* buffer;
 
     const uint64_t size = NUM_FRAMES * FRAME_SIZE;
@@ -137,7 +137,13 @@ struct xsk_socket_info* init_xsk_socket(const struct veth_pair* veth_pair) {
         exit(EXIT_FAILURE);
     }
 
-    struct xsk_socket_info* xsk = xsk_configure_socket(veth_pair->veth2, umem);
+    char* ifname;
+    ifname = calloc(1, IF_NAMESIZE);
+    snprintf(ifname, IF_NAMESIZE, "%s_inner", prefix);
+
+    struct xsk_socket_info* xsk = xsk_configure_socket(ifname, umem);
+
+    free(ifname);
 
     return xsk;
 }

@@ -10,6 +10,7 @@
 #include "veth_list.h"
 #include "socket.h"
 #include "socket_handler.h"
+#include "xsk_utils.h"
 
 int main(const int argc, char* argv[]) {
     options_parser(argc, argv, &opts);
@@ -24,6 +25,14 @@ int main(const int argc, char* argv[]) {
     lwlog_info("Starting client");
 
     request_port(opts.dev);
+
+    set_memory_limit();
+
+    struct xsk_socket_info* xsk_socket = init_xsk_socket(opts.dev);
+    if (xsk_socket == NULL) {
+        lwlog_crit("init_xsk_socket: %s", strerror(errno));
+    }
+
     sleep(5);
     remove_port(opts.dev);
 
