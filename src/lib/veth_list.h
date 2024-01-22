@@ -13,7 +13,10 @@ struct veth_list {
     int capacity;
 };
 
+#define IFNAMSIZ 16
+
 extern struct veth_list* veths;
+extern char phy_if[IFNAMSIZ];
 
 // Create a veth_list struct
 struct veth_list* veth_list_create(int capacity);

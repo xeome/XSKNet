@@ -38,5 +38,6 @@ typedef struct options options_t;
 
 /* Public functions section */
 void options_parser(int argc, char* argv[], options_t* options);
+extern options_t opts;
 
 #endif  // ARGS_H

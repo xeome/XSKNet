@@ -17,7 +17,7 @@ SRC := $(wildcard $(SRC_PATH)/*.c)
 LIB_SRC := $(wildcard $(LIB_PATH)/*.c)
 XDP_SRC := $(wildcard $(XDP_SRC_PATH)/*.c)
 
-all: $(DAEMON) $(CLIENT) $(OBJ_PATH)/phy_xdp.o
+all: $(DAEMON) $(CLIENT) $(OBJ_PATH)/phy_xdp.o $(OBJ_PATH)/inner_xdp.o $(OBJ_PATH)/outer_xdp.o
 
 $(DAEMON): $(SRC_PATH)/daemon.c $(LIB_SRC) $(wildcard $(INC_PATH)/*.h)
 	$(CC) $(CFLAGS) -o $@ $(SRC_PATH)/daemon.c $(LIB_SRC)
@@ -26,6 +26,12 @@ $(CLIENT): $(SRC_PATH)/client.c $(LIB_SRC) $(wildcard $(INC_PATH)/*.h)
 	$(CC) $(CFLAGS) -o $@ $(SRC_PATH)/client.c $(LIB_SRC)
 
 $(OBJ_PATH)/phy_xdp.o: $(XDP_SRC_PATH)/phy_xdp.c
+	$(CC) $(XDP_FLAGS) -o $@ $<
+
+$(OBJ_PATH)/inner_xdp.o: $(XDP_SRC_PATH)/inner_xdp.c
+	$(CC) $(XDP_FLAGS) -o $@ $<
+
+$(OBJ_PATH)/outer_xdp.o: $(XDP_SRC_PATH)/outer_xdp.c
 	$(CC) $(XDP_FLAGS) -o $@ $<
 
 clean:

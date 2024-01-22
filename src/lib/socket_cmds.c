@@ -8,6 +8,7 @@
 #include "socket_cmds.h"
 #include "veth_list.h"
 #include "socket.h"
+#include "xdp_utils.h"
 
 enum { CMD_SIZE = 1024 };
 
@@ -26,26 +27,48 @@ void create_port(const char* prefix) {
     snprintf(cmd, CMD_SIZE, "./scripts/create_veth.sh %s %s", inner, outer);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
     lwlog_info("Creating veth pair: [%s, %s]", inner, outer);
-    const int err = system(cmd);
+    int err = system(cmd);
     if (err != 0) {
         lwlog_err("Failed to create veth pair: [%s, %s]", inner, outer);
+    }
+
+    err = load_xdp_and_attach_to_ifname(outer, "obj/outer_xdp.o", "xdp_redirect_dummy_prog");
+    if (err != EXIT_OK) {
+        lwlog_err("load_xdp_and_attach_to_ifname: %s", strerror(err));
+    }
+
+    err = load_xdp_and_attach_to_ifname(inner, "obj/inner_xdp.o", "xdp_sock_prog");
+    if (err != EXIT_OK) {
+        lwlog_err("load_xdp_and_attach_to_ifname: %s", strerror(err));
     }
 }
 
 void delete_port(const char* prefix) {
     char inner[IFNAMSIZ];
+    char outer[IFNAMSIZ];
     snprintf(inner, IFNAMSIZ, "%s_inner", prefix);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+    snprintf(outer, IFNAMSIZ, "%s_outer", prefix);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
     lwlog_info("Removing veth pair from list: [%s]", inner);
     if (veth_list_remove(veths, inner) < 0) {
         lwlog_err("Failed to remove veth pair: [%s]", inner);
     }
 
+    int err = unload_xdp_from_ifname(outer);
+    if (err != EXIT_OK) {
+        lwlog_err("unload_xdp_from_ifname: %s", strerror(err));
+    }
+
+    err = unload_xdp_from_ifname(inner);
+    if (err != EXIT_OK) {
+        lwlog_err("unload_xdp_from_ifname: %s", strerror(err));
+    }
+
     char cmd[CMD_SIZE];
     snprintf(cmd, CMD_SIZE, "./scripts/delete_veth.sh %s", inner);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
     lwlog_info("Deleting veth pair: [%s]", inner);
-    const int err = system(cmd);
+    err = system(cmd);
     if (err != 0) {
         lwlog_err("Failed to delete veth pair: [%s]", inner);
     }

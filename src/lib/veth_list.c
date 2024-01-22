@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "args.h"
 #include "lwlog.h"
 #include "veth_list.h"
 

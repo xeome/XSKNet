@@ -11,8 +11,7 @@
 #include "xdp_utils.h"
 
 int main(const int argc, char* argv[]) {
-    options_t options;
-    options_parser(argc, argv, &options);
+    options_parser(argc, argv, &opts);
 
     signal_init();
     lwlog_info("Starting Daemon");
@@ -24,7 +23,7 @@ int main(const int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    err = load_xdp_and_attach_to_ifname("wlan0", "obj/phy_xdp.o", "xdp_redirect");
+    err = load_xdp_and_attach_to_ifname(opts.dev, "obj/phy_xdp.o", "xdp_redirect");
     if (err != EXIT_OK) {
         lwlog_crit("load_xdp_and_attach_to_ifname: %s", strerror(err));
     }

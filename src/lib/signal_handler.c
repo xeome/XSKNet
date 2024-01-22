@@ -3,12 +3,16 @@
 #include <stdlib.h>
 #include <pthread.h>
 
+#include "args.h"
 #include "signal_handler.h"
 #include "lwlog.h"
 #include "socket.h"
 #include "xdp_utils.h"
+#include "veth_list.h"
 
 volatile sig_atomic_t global_exit_flag = 0;
+
+options_t opts;
 
 void exit_daemon() {
     global_exit_flag = 1;
@@ -17,7 +21,7 @@ void exit_daemon() {
     pthread_join(socket_thread, NULL);  // its running socket_server_thread_func
 
     lwlog_info("Unloading XDP from wlan0");
-    int err = unload_xdp_from_ifname("wlan0");
+    int err = unload_xdp_from_ifname(opts.dev);
     if (err != EXIT_OK) {
         lwlog_crit("unload_xdp_from_ifname: %s", strerror(err));
     }

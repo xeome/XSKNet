@@ -105,6 +105,7 @@ defer:
 }
 
 int load_xdp_and_attach_to_ifname(const char* ifname, const char* filename, const char* progname) {
+    lwlog_info("Loading XDP program %s on interface %s", filename, ifname);
     if (ifname == NULL) {
         lwlog_err("ifname is NULL");
         return EXIT_FAIL_OPTION;
