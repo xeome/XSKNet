@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <net/if.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -9,6 +10,7 @@
 #include "socket.h"
 #include "lwlog.h"
 #include "socket_handler.h"
+#include "veth_list.h"
 
 pthread_t socket_thread = 0;
 int client_socket_fd;
@@ -130,6 +132,10 @@ void* socket_server_thread_func(void* exit_flag) {
     tv.tv_sec = 1;
     tv.tv_usec = 0;
     setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0)
+        lwlog_err("setsockopt(SO_REUSEADDR) failed");
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &(int){1}, sizeof(int)) < 0)
+        lwlog_err("setsockopt(SO_REUSEPORT) failed");
 
     while (*(int*)exit_flag == 0) {
         const int fd = socket_accept(socket_fd);
@@ -147,7 +153,7 @@ void* socket_server_thread_func(void* exit_flag) {
     return NULL;
 }
 
-void socket_write_with_timeout(const int socket_fd, const void* buffer, const unsigned long buffer_size) {
+void socket_write_with_timeout(const int socket_fd, void* buffer, const unsigned long buffer_size) {
     fd_set write_fds;
     FD_ZERO(&write_fds);
     FD_SET(socket_fd, &write_fds);
@@ -170,6 +176,17 @@ void socket_write_with_timeout(const int socket_fd, const void* buffer, const un
         perror("write");
         exit(EXIT_FAILURE);
     }
+
+    char response[1024];
+    const long bytes_read = read(socket_fd, response, sizeof(response));
+    if (bytes_read < 0) {
+        perror("read");
+        exit(EXIT_FAILURE);
+    }
+    lwlog_info("Server response: %s", response);
+
+    // Copy response string to buffer
+    strncpy(buffer, response, buffer_size);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 }
 
 /*
@@ -199,4 +216,13 @@ void remove_port(const char* veth_name) {
     char buffer[1024];
     snprintf(buffer, sizeof(buffer), "delete_port %s", veth_name);
     socket_send_to_port(buffer, 8080);
+}
+
+void request_phy_ifname(char* veth_name) {
+    lwlog_info("Requesting phy_ifname for %s", veth_name);
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "get_phy_if %s", veth_name);
+    socket_send_to_port(buffer, 8080);
+    lwlog_info("phy_ifname: %s", buffer);
+    strncpy(veth_name, buffer, IFNAMSIZ);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 }

@@ -28,7 +28,7 @@ int main(const int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    err = load_xdp_and_attach_to_ifname(opts.dev, "obj/phy_xdp.o", "xdp_redirect");
+    err = load_xdp_and_attach_to_ifname(opts.dev, "obj/phy_xdp.o", "xdp_redirect", "xdp_devmap");
     if (err != EXIT_OK) {
         lwlog_crit("load_xdp_and_attach_to_ifname: %s", strerror(err));
     }

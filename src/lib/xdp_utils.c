@@ -9,13 +9,15 @@
 #include <xdp/libxdp.h>
 
 #include <linux/if_link.h> /* Need XDP flags */
+
 #include "lwlog.h"
 #include "xdp_utils.h"
+#include "args.h"
 
 enum { PATH_MAX = 4096 };
 
 /* Pinning maps under /sys/fs/bpf in subdir */
-int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir, char* map_name) {
+int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir, const char* map_name) {
     if (bpf_obj == NULL) {
         lwlog_err("bpf_obj is NULL");
         return EXIT_FAIL_OPTION;
@@ -61,8 +63,10 @@ int pin_maps_in_bpf_object(struct bpf_object* bpf_obj, const char* subdir, char*
 
     /* This will pin all maps in our bpf_object */
     err = bpf_object__pin_maps(bpf_obj, pin_dir);
-    if (err)
+    if (err) {
+        lwlog_err("pinning maps in %s", pin_dir);
         return EXIT_FAIL_BPF;
+    }
 
     return 0;
 }
@@ -133,7 +137,7 @@ int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_i
     return fd;
 }
 
-int load_xdp_and_attach_to_ifname(const char* ifname, const char* filename, const char* progname) {
+int load_xdp_and_attach_to_ifname(const char* ifname, const char* filename, const char* progname, const char* map_name) {
     lwlog_info("Loading XDP program %s on interface %s", filename, ifname);
     if (ifname == NULL) {
         lwlog_err("ifname is NULL");
@@ -179,5 +183,42 @@ int load_xdp_and_attach_to_ifname(const char* ifname, const char* filename, cons
         return EXIT_FAIL_BPF;
     }
 
+    if (map_name == NULL) {
+        lwlog_info("No map name specified for %s, not pinning maps", ifname);
+        return 0;
+    }
+
+    /* Pin the maps */
+    err = pin_maps_in_bpf_object(xdp_program__bpf_obj(prog), ifname, map_name);
+    if (err) {
+        lwlog_err("ERR: pinning maps in %s", ifname);
+        return err;
+    }
+
     return EXIT_OK;
+}
+
+int update_devmap(int ifindex, char* ifname) {
+    char pin_dir[PATH_MAX] = {0};
+    struct bpf_map_info info = {0};
+
+    const int len = snprintf(pin_dir, PATH_MAX, "%s/%s", pin_basedir, opts.dev);
+    if (len < 0 || len >= PATH_MAX) {
+        lwlog_err("Couldn't format pin_dir");
+        return -1;
+    }
+
+    const int map_fd = open_bpf_map_file(pin_dir, "xdp_devmap", &info);
+    if (map_fd < 0) {
+        lwlog_err("Couldn't open xdp_devmap");
+        return -1;
+    }
+
+    const int key = 0;
+    const int ret = bpf_map_update_elem(map_fd, &key, &ifindex, BPF_ANY);
+    if (ret) {
+        lwlog_info("Couldn't update devmap for %s", ifname);
+        return -1;
+    }
+    return 0;
 }

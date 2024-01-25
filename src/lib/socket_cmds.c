@@ -9,11 +9,12 @@
 #include "veth_list.h"
 #include "socket.h"
 #include "xdp_utils.h"
+#include "args.h"
 
 enum { CMD_SIZE = 1024 };
 
 // creates veth pair with the given prefix i.e. "test" -> "test_inner" and "test_outer"
-void create_port(const char* prefix) {
+void create_port(char* prefix) {
     char inner[IFNAMSIZ];
     char outer[IFNAMSIZ];
     snprintf(inner, IFNAMSIZ, "%s_inner", prefix);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
@@ -32,18 +33,24 @@ void create_port(const char* prefix) {
         lwlog_err("Failed to create veth pair: [%s, %s]", inner, outer);
     }
 
-    err = load_xdp_and_attach_to_ifname(outer, "obj/outer_xdp.o", "xdp_redirect_dummy_prog");
+    err = load_xdp_and_attach_to_ifname(outer, "obj/outer_xdp.o", "xdp_redirect_dummy_prog", NULL);
     if (err != EXIT_OK) {
         lwlog_err("load_xdp_and_attach_to_ifname: %s", strerror(err));
     }
 
-    err = load_xdp_and_attach_to_ifname(inner, "obj/inner_xdp.o", "xdp_sock_prog");
+    err = load_xdp_and_attach_to_ifname(inner, "obj/inner_xdp.o", "xdp_sock_prog", "xsks_map");
     if (err != EXIT_OK) {
         lwlog_err("load_xdp_and_attach_to_ifname: %s", strerror(err));
+    }
+
+    lwlog_info("Redirecting traffic from %s to %s", opts.dev, outer);
+    err = update_devmap(if_nametoindex(outer), outer);
+    if (err != EXIT_OK) {
+        lwlog_err("Failed updating devmap: %s", strerror(err));
     }
 }
 
-void delete_port(const char* prefix) {
+void delete_port(char* prefix) {
     char inner[IFNAMSIZ];
     char outer[IFNAMSIZ];
     snprintf(inner, IFNAMSIZ, "%s_inner", prefix);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)

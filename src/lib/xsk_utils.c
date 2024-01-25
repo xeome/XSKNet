@@ -4,10 +4,12 @@
 #include <unistd.h>
 #include <net/if.h>
 #include <sys/resource.h>
+#include <linux/if_ether.h>
 
 #include "veth_list.h"
 #include "xdp_utils.h"
 #include "xsk_utils.h"
+#include "xsk_receive.h"
 #include "lwlog.h"
 
 void set_memory_limit() {
@@ -16,6 +18,14 @@ void set_memory_limit() {
         lwlog_err("ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
+}
+
+void init_iface(struct egress_sock* egress, const char* phy_ifname) {
+    egress->addr = calloc(1, sizeof(*egress->addr));
+
+    get_mac_address(egress->addr->sll_addr, phy_ifname);
+    egress->addr->sll_halen = ETH_ALEN;
+    egress->addr->sll_ifindex = if_nametoindex(phy_ifname);
 }
 
 static struct xsk_umem_info* configure_xsk_umem(void* buffer, uint64_t size) {

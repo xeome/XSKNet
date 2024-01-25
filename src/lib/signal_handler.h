@@ -3,5 +3,6 @@
 void daemon_signal_init();
 void client_signal_init();
 void exit_daemon();
+void exit_client();
 
-extern volatile sig_atomic_t global_exit_flag;
+extern int global_exit_flag;

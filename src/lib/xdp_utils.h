@@ -14,4 +14,6 @@ enum {
 #define pin_basedir "/sys/fs/bpf"
 int unload_xdp_from_ifname(const char* ifname);
 int open_bpf_map_file(const char* pin_dir, const char* mapname, struct bpf_map_info* info);
-int load_xdp_and_attach_to_ifname(const char* ifname, const char* filename, const char* progname);
+int load_xdp_and_attach_to_ifname(const char* ifname, const char* filename, const char* progname, const char* map_name);
+
+int update_devmap(int ifindex, char* ifname);

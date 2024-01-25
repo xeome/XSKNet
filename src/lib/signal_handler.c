@@ -11,7 +11,7 @@
 #include "xdp_utils.h"
 #include "veth_list.h"
 
-volatile sig_atomic_t global_exit_flag = 0;
+int global_exit_flag = 0;
 
 options_t opts;
 
@@ -65,6 +65,7 @@ void exit_client() {
 
     exit(EXIT_SUCCESS);
 }
+
 static void client_sigint_handler() {
     fprintf(stderr, "\n");
     fprintf(stderr, RED "Interrupted by user\n" NONE);
