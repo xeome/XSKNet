@@ -3,8 +3,12 @@
 #include <time.h>
 #include <locale.h>
 #include <unistd.h>
+#include <stdint.h>
 
-#include "libxsk.h"
+#include "signal_handler.h"
+#include "xdp_utils.h"
+#include "xsk_utils.h"
+#include "xsk_stats.h"
 #include "lwlog.h"
 
 #define CLOCK_MONOTONIC 1
@@ -64,25 +68,8 @@ static void stats_print(const struct stats_record* stats_rec, const struct stats
 }
 
 void* stats_poll(void* arg) {
-    const struct poll_arg* poll_arg = arg;
+    struct xsk_socket_info* xsk = (struct xsk_socket_info*)arg;
 
-    if (!poll_arg) {
-        lwlog_err("ERROR: Invalid poll_arg");
-        return NULL;
-    }
-
-    if (!poll_arg->xsk) {
-        lwlog_err("ERROR: Invalid xsk");
-        return NULL;
-    }
-
-    if (!poll_arg->global_exit) {
-        lwlog_err("ERROR: Invalid global_exit");
-        return NULL;
-    }
-
-    struct xsk_socket_info* xsk = poll_arg->xsk;
-    const volatile bool* global_exit = poll_arg->global_exit;
     static struct stats_record previous_stats = {0};
 
     previous_stats.timestamp = gettime();
@@ -90,7 +77,7 @@ void* stats_poll(void* arg) {
     /* Trick to pretty printf with thousands separators use %' */
     setlocale(LC_NUMERIC, "en_US");
 
-    while (!*global_exit) {
+    while (!global_exit_flag) {
         const unsigned int interval = 2;
         sleep(interval);
         xsk->stats.timestamp = gettime();

@@ -76,3 +76,4 @@ config.mk
 bin/*
 obj/*
 .idea
+.trunk

@@ -10,8 +10,39 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#include "libxsk.h"
 #include "lwlog.h"
+#include "xsk_receive.h"
+#include "xsk_utils.h"
+
+void get_mac_address(unsigned char* mac_addr, const char* ifname) {
+    struct ifreq ifr;
+    if (!ifname) {
+        lwlog_err("ERROR: Couldn't get interface name from index");
+        exit(EXIT_FAILURE);
+    }
+    if (!mac_addr) {
+        lwlog_err("ERROR: Couldn't get MAC address");
+        exit(EXIT_FAILURE);
+    }
+
+    const int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd == -1) {
+        lwlog_err("ERROR: Couldn't create socket");
+        exit(EXIT_FAILURE);
+    }
+
+    ifr.ifr_addr.sa_family = AF_INET;
+    strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+
+    if (ioctl(fd, SIOCGIFHWADDR, &ifr) == -1) {
+        lwlog_err("ERROR: Couldn't get MAC address for interface %s", ifname);
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd);
+
+    memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, 6);
+}
 
 /**
  * @brief Allocates a frame from the user memory (umem).
@@ -59,7 +90,7 @@ static void complete_tx(struct xsk_socket_info* xsk) {
         return;
 
     /* For each completed transmission, free the corresponding user memory frame. */
-    for (int i = 0; i < completed; i++)
+    for (size_t i = 0; i < completed; i++)
         xsk_free_umem_frame(xsk, *xsk_ring_cons__comp_addr(&xsk->umem->cq, idx_cq++));
 
     /* Release the completed transmissions from the completion queue. */
@@ -79,7 +110,7 @@ static inline void csum_replace2(uint16_t* sum, const uint16_t old, const uint16
     *sum = ~csum;  // 1's complement of the checksum
 }
 
-static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, const struct iface* egress) {
+static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t len, const struct egress_sock* egress) {
     uint8_t* pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
     errno = 0;
@@ -126,16 +157,13 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     csum_replace2(&icmp->checksum, ICMP_ECHO, ICMP_ECHOREPLY);
 
     lwlog_info("Transmitting ICMPv4 echo reply");
-    lwlog_info("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_source[0], eth->h_source[1], eth->h_source[2],
-               eth->h_source[3], eth->h_source[4], eth->h_source[5]);
-    lwlog_info("Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_dest[0], eth->h_dest[1], eth->h_dest[2], eth->h_dest[3],
-               eth->h_dest[4], eth->h_dest[5]);
+    lwlog_info("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_source[0], eth->h_source[1], eth->h_source[2], eth->h_source[3], eth->h_source[4], eth->h_source[5]);
+    lwlog_info("Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x", eth->h_dest[0], eth->h_dest[1], eth->h_dest[2], eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
     lwlog_info("Source IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->saddr));
     lwlog_info("Dest IP: %s", inet_ntoa(*(struct in_addr*)&ipv4->daddr));
 
     /* Send packet */
-    if ((ret = sendto(egress->sockfd, pkt, len, 0, (struct sockaddr*)egress->socket_address, sizeof(*egress->socket_address))) ==
-        -1) {
+    if ((ret = sendto(egress->sockfd, pkt, len, 0, (struct sockaddr*)egress->addr, sizeof(*egress->addr))) == -1) {
         lwlog_err("ERROR: Failed to send packet");
         return false;
     }
@@ -161,7 +189,7 @@ static bool process_packet(struct xsk_socket_info* xsk, uint64_t addr, uint32_t 
     return false;
 }
 
-static void handle_receive_packets(struct xsk_socket_info* xsk, const struct iface* egress) {
+static void handle_receive_packets(struct xsk_socket_info* xsk, struct egress_sock* egress) {
     unsigned int i;
     uint32_t idx_rx = 0, idx_fq = 0;
 
@@ -173,7 +201,7 @@ static void handle_receive_packets(struct xsk_socket_info* xsk, const struct ifa
     const unsigned int stock_frames = xsk_prod_nb_free(&xsk->umem->fq, xsk_umem_free_frames(xsk));
 
     if (stock_frames > 0) {
-        int ret = xsk_ring_prod__reserve(&xsk->umem->fq, stock_frames, &idx_fq);
+        uint32_t ret = xsk_ring_prod__reserve(&xsk->umem->fq, stock_frames, &idx_fq);
 
         /* This should not happen, but just in case
          * Wait until we can reserve enough space in the fill queue
@@ -208,39 +236,8 @@ static void handle_receive_packets(struct xsk_socket_info* xsk, const struct ifa
     complete_tx(xsk);
 }
 
-void get_mac_address(unsigned char* mac_addr, const char* ifname) {
-    struct ifreq ifr;
-    if (!ifname) {
-        lwlog_err("ERROR: Couldn't get interface name from index");
-        exit(EXIT_FAILURE);
-    }
-    if (!mac_addr) {
-        lwlog_err("ERROR: Couldn't get MAC address");
-        exit(EXIT_FAILURE);
-    }
-
-    const int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd == -1) {
-        lwlog_err("ERROR: Couldn't create socket");
-        exit(EXIT_FAILURE);
-    }
-
-    ifr.ifr_addr.sa_family = AF_INET;
-    strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
-
-    if (ioctl(fd, SIOCGIFHWADDR, &ifr) == -1) {
-        lwlog_err("ERROR: Couldn't get MAC address");
-        exit(EXIT_FAILURE);
-    }
-
-    close(fd);
-
-    memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, 6);
-}
-
-void rx_and_process(struct config* cfg, struct xsk_socket_info* xsk_socket, const bool* global_exit, struct iface* egress) {
+void rx_and_process(struct xsk_socket_info* xsk_socket, const int* global_exit, struct egress_sock* egress) {
     struct pollfd fds[2];
-
     /* Open RAW socket to send on */
     if ((egress->sockfd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW)) == -1) {
         lwlog_err("ERROR: Failed to open raw socket");
