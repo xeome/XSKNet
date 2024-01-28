@@ -20,7 +20,7 @@ int main(const int argc, char* argv[]) {
 
     daemon_signal_init();
     lwlog_info("Starting Daemon");
-    veths = veth_list_create(10);
+    // veths = veth_list_create(10);
 
     int err = pthread_create(&socket_thread, NULL, socket_server_thread_func, &global_exit_flag);
     if (err != 0) {

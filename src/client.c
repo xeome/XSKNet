@@ -15,6 +15,8 @@
 #include "xsk_stats.h"
 #include "xsk_receive.h"
 
+#include "uthash.h"
+
 int main(const int argc, char* argv[]) {
     options_parser(argc, argv, &opts);
 
@@ -51,7 +53,6 @@ int main(const int argc, char* argv[]) {
 
     rx_and_process(xsk_socket, &global_exit_flag, &ingress);
 
-    sleep(5);
     remove_port(opts.dev);
 
     return 0;

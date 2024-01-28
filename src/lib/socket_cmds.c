@@ -15,14 +15,15 @@ enum { CMD_SIZE = 1024 };
 
 // creates veth pair with the given prefix i.e. "test" -> "test_inner" and "test_outer"
 void create_port(char* prefix) {
+    if (veth_list_add(&veths, prefix) < 0) {
+        lwlog_err("Failed to add veth pair: [%s]", prefix);
+    }
+    veth_list_print(veths);
+
     char inner[IFNAMSIZ];
     char outer[IFNAMSIZ];
     snprintf(inner, IFNAMSIZ, "%s_inner", prefix);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
     snprintf(outer, IFNAMSIZ, "%s_outer", prefix);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
-    lwlog_info("Adding veth pair to list: [%s, %s]", inner, outer);
-    if (veth_list_add(veths, inner, outer) < 0) {
-        lwlog_err("Failed to add veth pair: [%s, %s]", inner, outer);
-    }
 
     char cmd[CMD_SIZE];
     snprintf(cmd, CMD_SIZE, "./scripts/create_veth.sh %s %s", inner, outer);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
@@ -56,9 +57,9 @@ void delete_port(char* prefix) {
     snprintf(inner, IFNAMSIZ, "%s_inner", prefix);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
     snprintf(outer, IFNAMSIZ, "%s_outer", prefix);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
-    lwlog_info("Removing veth pair from list: [%s]", inner);
-    if (veth_list_remove(veths, inner) < 0) {
-        lwlog_err("Failed to remove veth pair: [%s]", inner);
+    lwlog_info("Removing %s from veth_map", prefix);
+    if (veth_list_remove(&veths, prefix) < 0) {
+        lwlog_err("Failed to remove %s from veth_map", prefix);
     }
 
     int err = unload_xdp_from_ifname(outer);
@@ -82,11 +83,8 @@ void delete_port(char* prefix) {
 }
 
 void unload_list() {
-    for (int i = 0; i < veths->size; i++) {
-        char prefix[IFNAMSIZ];
-        // remove trailing _inner
-        strncpy(prefix, veths->veth_pairs[i].veth1,
-                strlen(veths->veth_pairs[i].veth1) - 6);  // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
-        delete_port(prefix);
+    struct veth_pair *current, *tmp;
+    HASH_ITER(hh, veths, current, tmp) {
+        delete_port(current->prefix);
     }
 }

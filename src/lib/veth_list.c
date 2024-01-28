@@ -1,80 +1,76 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <net/if.h>
 
 #include "args.h"
 #include "lwlog.h"
 #include "veth_list.h"
+#include "uthash.h"
 
-struct veth_list* veths;
+struct veth_pair* veths = NULL;
 
-struct veth_list* veth_list_create(const int capacity) {
-    struct veth_list* veth_list = malloc(sizeof(struct veth_list));
-    veth_list->veth_pairs = malloc(sizeof(struct veth_pair) * capacity);
-    veth_list->free_list = malloc(sizeof(int) * capacity);
-    veth_list->size = 0;
-    veth_list->capacity = capacity;
-    for (int i = 0; i < capacity; i++) {
-        veth_list->free_list[i] = i;
+int veth_list_add(struct veth_pair** veth_map, const char* prefix) {
+    struct veth_pair* veth_pair = NULL;
+    HASH_FIND_STR(*veth_map, prefix, veth_pair);
+    if (veth_pair != NULL) {
+        lwlog_err("veth pair with prefix %s already exists", prefix);
+        return -1;  // Return without freeing if the entry already exists
     }
-    return veth_list;
-}
 
-void veth_list_destroy(struct veth_list* veth_list) {
-    free(veth_list->veth_pairs);
-    free(veth_list->free_list);
-    free(veth_list);
-}
-
-int veth_list_add(struct veth_list* veth_list, const char* veth1, const char* veth2) {
-    if (veth_list == NULL) {
-        lwlog_err("veth_list is NULL");
+    struct veth_pair* new_entry = (struct veth_pair*)malloc(sizeof(struct veth_pair));
+    if (new_entry == NULL) {
+        lwlog_err("malloc: %s", strerror(errno));
         return -1;
     }
 
-    if (veth_list->size == veth_list->capacity) {
+    char veth1[IFNAMSIZ];
+    char veth2[IFNAMSIZ];
+    snprintf(veth1, IFNAMSIZ, "%s_inner", prefix);
+    snprintf(veth2, IFNAMSIZ, "%s_outer", prefix);
+
+    strncpy(new_entry->prefix, prefix, sizeof(new_entry->prefix) - 1);
+    new_entry->prefix[sizeof(new_entry->prefix) - 1] = '\0';  // Ensure null-termination
+
+    new_entry->veth1 = strdup(veth1);
+    new_entry->veth2 = strdup(veth2);
+
+    HASH_ADD_STR(*veth_map, prefix, new_entry);
+    veth_list_print(*veth_map);
+    return 0;
+}
+
+int veth_list_remove(struct veth_pair** veth_map, const char* prefix) {
+    struct veth_pair* veth_pair = NULL;
+    veth_list_print(*veth_map);
+    HASH_FIND_STR(*veth_map, prefix, veth_pair);
+    if (veth_pair == NULL) {
+        lwlog_err("veth pair with prefix %s does not exist", prefix);
         return -1;
     }
-    const int index = veth_list->free_list[veth_list->size];
-    veth_list->veth_pairs[index].veth1 = strdup(veth1);
-    veth_list->veth_pairs[index].veth2 = strdup(veth2);
-    veth_list->size++;
-    return index;
+
+    HASH_DEL(*veth_map, veth_pair);
+    free(veth_pair);
+
+    // Set the pointer to NULL to avoid use-after-free
+    veth_pair = NULL;
+
+    return 0;
 }
 
-int veth_list_remove(struct veth_list* veth_list, const char* prefix) {
-    for (int i = 0; i < veth_list->size; i++) {
-        if (strncmp(veth_list->veth_pairs[i].veth1, prefix, strlen(prefix)) == 0) {
-            free(veth_list->veth_pairs[i].veth1);
-            free(veth_list->veth_pairs[i].veth2);
-            veth_list->veth_pairs[i].veth1 = NULL;
-            veth_list->veth_pairs[i].veth2 = NULL;
-            veth_list->free_list[veth_list->size] = i;
-            veth_list->size--;
-            return i;
-        }
-    }
-    lwlog_err("Failed to remove veth pair: %s", prefix);
-    return -1;
-}
-
-struct veth_pair* veth_list_get(const struct veth_list* veth_list, const int index) {
-    if (index < 0 || index >= veth_list->size) {
-        return NULL;
-    }
-    return &veth_list->veth_pairs[index];
-}
-
-void veth_list_print(const struct veth_list* veth_list) {
-    printf("veth_list: size=%d capacity=%d\n", veth_list->size, veth_list->capacity);
-    for (int i = 0; i < veth_list->size; i++) {
-        printf("  %d: %s %s\n", i, veth_list->veth_pairs[i].veth1, veth_list->veth_pairs[i].veth2);
-    }
-    for (int i = veth_list->size; i < veth_list->capacity; i++) {
-        printf("  %d: free\n", i);
+void veth_list_print(struct veth_pair* veth_map) {
+    struct veth_pair *current, *tmp;
+    lwlog_info("Dumping veth_map");
+    HASH_ITER(hh, veth_map, current, tmp) {
+        lwlog_info("veth prefix: %s, veth1: %s, veth2: %s", current->prefix, current->veth1, current->veth2);
     }
 }
 
-int veth_list_size(const struct veth_list* veth_list) {
-    return veth_list->size;
+void veth_list_destroy(struct veth_pair* veth_map) {
+    struct veth_pair *current, *tmp;
+    veth_list_print(veth_map);
+    HASH_ITER(hh, veth_map, current, tmp) {
+        HASH_DEL(veth_map, current);
+        free(current);
+    }
 }

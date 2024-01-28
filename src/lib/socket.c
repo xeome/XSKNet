@@ -27,6 +27,13 @@ int socket_create() {
         perror("socket");
         exit(EXIT_FAILURE);
     }
+
+    int opt = 1;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
     return socket_fd;
 }
 
