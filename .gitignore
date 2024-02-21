@@ -77,3 +77,4 @@ bin/*
 obj/*
 .idea
 .trunk
+build
